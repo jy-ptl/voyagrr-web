@@ -3,6 +3,7 @@ import axiosInstance from "@/api/axiosInstance";
 export interface Group {
   groupId: number;
   name: string;
+  description?: string;
   ownerId: string;
   members: string[];
 }
@@ -24,8 +25,8 @@ export const groupService = {
   /**
    * Creates a new group
    */
-  async createGroup(group: GroupCreateRequest): Promise<number> {
-    const response = await axiosInstance.post<number>("/api/group/create", group);
+  async createGroup(group: GroupCreateRequest): Promise<Group> {
+    const response = await axiosInstance.post<Group>("/api/group/create", group);
     return response.data;
   },
 

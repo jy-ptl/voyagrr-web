@@ -51,6 +51,19 @@ import { storageService } from "@/services/storageService";
 import { metadataService } from "@/services/metadataService";
 import type { DirectoryItem } from "@/types/drive";
 
+interface FileMetadata {
+  file?: {
+    size?: number;
+    width?: number;
+    height?: number;
+    mime?: string;
+  };
+  analysis?: {
+    scene?: string;
+    tags?: Array<{ tag: string }>;
+  };
+}
+
 const folderSchema = z.object({
   name: z.string().min(1, "Folder name is required").max(100),
 });
@@ -79,8 +92,8 @@ export const MyDrivePage = () => {
   
   // Selection & Info State
   const [itemToDelete, setItemToDelete] = useState<DirectoryItem | null>(null);
-  const [itemInfo, setItemInfo] = useState<{ item: DirectoryItem, metadata: Record<string, unknown> } | null>(null);
-  const [metadataMap, setMetadataMap] = useState<Record<string | number, unknown>>({});
+  const [itemInfo, setItemInfo] = useState<{ item: DirectoryItem, metadata: FileMetadata } | null>(null);
+  const [metadataMap, setMetadataMap] = useState<Record<string | number, FileMetadata>>({});
   
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -124,9 +137,9 @@ export const MyDrivePage = () => {
         // Batch Fetch Metadata
         try {
           const metaResponses = await metadataService.getDirectoryMetadata(folderId);
-          const newMap: Record<string | number, unknown> = {};
+          const newMap: Record<string | number, FileMetadata> = {};
           metaResponses.forEach((m) => {
-            newMap[m.fileId] = m.metadata;
+            newMap[m.fileId] = m.metadata as FileMetadata;
           });
           setMetadataMap(newMap);
         } catch (mErr) {
