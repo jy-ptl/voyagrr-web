@@ -47,7 +47,7 @@ const tripSchema = z.object({
   visibility: z.enum(["PRIVATE", "SHARED"]),
   status: z.enum(["PLANNED", "ONGOING", "COMPLETED"]),
   groupId: z.number().optional(),
-  keycloakUserIds: z.array(z.string()).default([]),
+  keycloakUserIds: z.array(z.string()),
 });
 
 type TripValues = z.infer<typeof tripSchema>;
