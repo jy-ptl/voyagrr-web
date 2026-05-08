@@ -1,0 +1,20 @@
+import axiosInstance from "@/api/axiosInstance";
+
+export interface UserSearchResponse {
+  keycloakUserId: string;
+  username: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+}
+
+export const userService = {
+  /**
+   * Searches for users by username or email
+   */
+  async searchUsers(query: string): Promise<UserSearchResponse[]> {
+    if (!query) return [];
+    const response = await axiosInstance.get<UserSearchResponse[]>(`/api/user/search?query=${encodeURIComponent(query)}`);
+    return response.data;
+  }
+};
