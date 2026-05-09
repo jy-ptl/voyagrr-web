@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
-import { Folder, File, Search, MoreVertical, LayoutGrid, List as ListIcon, ChevronRight, Plus, FolderPlus, Pencil, Trash2, Info, Upload, Download } from "lucide-react";
+import { Folder, Search, MoreVertical, LayoutGrid, List as ListIcon, ChevronRight, Plus, FolderPlus, Pencil, Trash2, Info, Upload, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +21,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { MetadataDialog } from "@/components/drive/MetadataDialog";
+import { FileThumbnail } from "@/components/drive/FileThumbnail";
 import {
   Form,
   FormControl,
@@ -49,20 +50,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { directoryService } from "@/services/directoryService";
 import { storageService } from "@/services/storageService";
 import { metadataService } from "@/services/metadataService";
-import type { DirectoryItem } from "@/types/drive";
+import type { DirectoryItem, FileMetadata } from "@/types/drive";
 
-interface FileMetadata {
-  file?: {
-    size?: number;
-    width?: number;
-    height?: number;
-    mime?: string;
-  };
-  analysis?: {
-    scene?: string;
-    tags?: Array<{ tag: string }>;
-  };
-}
 
 const folderSchema = z.object({
   name: z.string().min(1, "Folder name is required").max(100),
@@ -354,15 +343,11 @@ export const MyDrivePage = () => {
                       )}
                     >
                       <div className={cn("flex items-center gap-3 min-w-0", view === 'grid' ? "flex-col w-full" : "flex-row")}>
-                        <div className={cn(
-                          "flex items-center justify-center rounded-lg transition-all duration-300 shrink-0",
-                          view === 'grid' ? "h-10 w-10" : "h-9 w-9",
-                          item.type === 'directory' 
-                            ? "bg-primary/10 text-primary group-hover:bg-primary/20" 
-                            : "bg-zinc-800 text-zinc-500 group-hover:bg-zinc-700 group-hover:text-white"
-                        )}>
-                          {item.type === 'directory' ? <Folder className="h-5 w-5" strokeWidth={1.5} /> : <File className="h-5 w-5" strokeWidth={1.5} />}
-                        </div>
+                        <FileThumbnail 
+                          fileId={item.id} 
+                          type={item.type} 
+                          className={view === 'grid' ? "h-16 w-16 sm:h-20 sm:w-20 shrink-0" : "h-10 w-10 shrink-0"}
+                        />
                         <div className="overflow-hidden">
                           <p className={cn(
                             "truncate text-[11px] font-bold text-white group-hover:text-primary transition-colors",

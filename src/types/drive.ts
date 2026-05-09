@@ -24,7 +24,41 @@ export interface DirectoryTreeResponse {
   name: string;
 }
 
+export interface FileMetadata {
+  file?: {
+    size?: number;
+    width?: number;
+    height?: number;
+    mime?: string;
+    device?: string;
+    location?: string;
+    createdOn?: string;
+    updatedOn?: string;
+    duration?: number | null;
+  };
+  analysis?: {
+    scene?: string;
+    tags?: Array<{ tag: string; confidence?: number }>;
+    objects?: Array<{ label: string; confidence: number }>;
+    emotions?: Array<{ emotion: string; confidence: number }>;
+  };
+  recognition?: {
+    faces?: Array<{
+      bbox: { x1: number; x2: number; y1: number; y2: number };
+      userId?: string | null;
+      confidence?: number | null;
+      user?: {
+        firstName: string;
+        lastName: string;
+        email: string;
+        username: string;
+      } | null;
+    }>;
+    tripId?: number;
+  };
+}
+
 export interface MetadataResponse {
   fileId: number | string;
-  metadata: Record<string, unknown>;
+  metadata: FileMetadata;
 }
