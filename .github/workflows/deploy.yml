@@ -1,0 +1,60 @@
+name: Deploy React Frontend
+
+on:
+  push:
+    branches: [ main, staging ]
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    if: github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/main'
+    environment: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
+
+    steps:
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Add server to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to remote server
+        run: |
+          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << "EOF"
+            set -e
+
+            echo "Navigating to project directory..."
+            # Assuming the frontend is cloned here
+            cd ~/voyagrr-frontend
+
+            echo "Pulling latest code for branch ${{ github.ref_name }}..."
+            git checkout ${{ github.ref_name }}
+            git pull origin ${{ github.ref_name }}
+
+            echo "Installing dependencies..."
+            npm install
+
+            echo "Setting up environment variables..."
+            if [ "${{ github.ref_name }}" = "main" ]; then
+              echo "VITE_API_BASE_URL=https://api.voyagrr.com" > .env
+              NGINX_DIR="/var/www/voyagrr"
+            else
+              echo "VITE_API_BASE_URL=https://api.voyagrr.com" > .env
+              NGINX_DIR="/var/www/staging"
+            fi
+
+            echo "Building React app..."
+            npm run build
+
+            echo "Deploying build to nginx directory ($NGINX_DIR)..."
+            sudo rm -rf $NGINX_DIR/*
+            sudo cp -r dist/* $NGINX_DIR/
+
+            echo "Reloading nginx..."
+            sudo systemctl reload nginx
+
+            echo "Deployment completed successfully!"
+          EOF
