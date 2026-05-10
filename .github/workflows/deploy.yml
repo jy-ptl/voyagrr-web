@@ -34,6 +34,12 @@ jobs:
             git checkout -B ${{ github.ref_name }} origin/${{ github.ref_name }}
             git reset --hard origin/${{ github.ref_name }}
 
+            echo "Setting up Node environment..."
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+            source ~/.profile 2>/dev/null || true
+            source ~/.bashrc 2>/dev/null || true
+
             echo "Installing dependencies..."
             npm install
 
