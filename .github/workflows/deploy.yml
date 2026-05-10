@@ -27,8 +27,7 @@ jobs:
             set -e
 
             echo "Navigating to project directory..."
-            # Assuming the frontend is cloned here
-            cd ~/voyagrr-frontend
+            cd ~/deployment/voyagrr-web
 
             echo "Pulling latest code for branch ${{ github.ref_name }}..."
             git checkout ${{ github.ref_name }}
