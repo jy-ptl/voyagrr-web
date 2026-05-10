@@ -7,7 +7,7 @@ export const authService = {
    */
   async login(credentials: Record<string, unknown>): Promise<AuthResponse> {
     const response = await axiosInstance.post<AuthResponse>("/api/auth/login", credentials);
-    return response.data;
+    return typeof response.data === 'string' ? JSON.parse(response.data) : response.data;
   },
 
   /**

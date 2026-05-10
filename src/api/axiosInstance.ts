@@ -1,7 +1,6 @@
 import axios from 'axios';
 import { store } from '../store';
 import { setAuth, clearAuth } from '../store/slices/authSlice';
-import keycloak from '../auth/keycloak';
 
 const axiosInstance = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL,
@@ -11,7 +10,10 @@ axiosInstance.interceptors.request.use(
   (config) => {
     const state = store.getState();
     const token = state.auth.token;
-    if (token) {
+    
+    // Only add Authorization header if it's not already present
+    // This allows retries in the response interceptor to provide their own token
+    if (token && !config.headers.Authorization) {
       config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
@@ -27,21 +29,38 @@ axiosInstance.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // If the error is 401 and we haven't retried yet
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // If the error is 401 OR if it's a "Network Error" without a response 
+    // (the browser often masks 401s as CORS/Network errors when headers are missing)
+    const is401 = error.response?.status === 401;
+    const isPotentialCORS401 = !error.response && error.message === 'Network Error';
+
+    if ((is401 || isPotentialCORS401) && !originalRequest._retry) {
       originalRequest._retry = true;
 
       try {
-        // Attempt to refresh the token using Keycloak
-        // Passing -1 to force refresh if the token is already expired
-        await keycloak.updateToken(-1);
+        const state = store.getState();
+        const currentRefreshToken = state.auth.refreshToken;
         
-        const newToken = keycloak.token;
+        if (!currentRefreshToken) {
+          throw new Error('No refresh token available');
+        }
+
+        const refreshUrl = `${import.meta.env.VITE_API_BASE_URL || ''}/api/auth/refresh`;
+
+        // Attempt to refresh the token using api
+        const response = await axios.post(refreshUrl, {
+          refreshToken: currentRefreshToken
+        });
+        
+        const data = typeof response.data === 'string' ? JSON.parse(response.data) : response.data;
+        const newToken = data.access_token;
+        const newRefreshToken = data.refresh_token;
+
         if (newToken) {
           // Update Redux store with the new tokens
           store.dispatch(setAuth({
             token: newToken,
-            refreshToken: keycloak.refreshToken,
+            refreshToken: newRefreshToken,
             user: store.getState().auth.user,
           }));
 
@@ -49,9 +68,8 @@ axiosInstance.interceptors.response.use(
           originalRequest.headers.Authorization = `Bearer ${newToken}`;
           return axiosInstance(originalRequest);
         }
-      } catch (refreshError) {
+      } catch (refreshError: any) {
         // If refresh fails (e.g., refresh token expired), log out the user
-        console.error('Session expired, logging out...', refreshError);
         store.dispatch(clearAuth());
         window.location.href = '/login';
         return Promise.reject(refreshError);
