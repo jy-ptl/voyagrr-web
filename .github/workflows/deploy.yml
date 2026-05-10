@@ -30,8 +30,9 @@ jobs:
             cd ~/deployment/voyagrr-web
 
             echo "Pulling latest code for branch ${{ github.ref_name }}..."
-            git checkout ${{ github.ref_name }}
-            git pull origin ${{ github.ref_name }}
+            git fetch origin
+            git checkout -B ${{ github.ref_name }} origin/${{ github.ref_name }}
+            git reset --hard origin/${{ github.ref_name }}
 
             echo "Installing dependencies..."
             npm install
