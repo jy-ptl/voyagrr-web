@@ -569,28 +569,28 @@ export const MyDrivePage = () => {
 
       {uploadProgress && (
         <motion.div 
-          initial={{ opacity: 0, y: 50 }} 
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 50 }}
-          className="fixed bottom-8 left-1/2 -translate-x-1/2 w-[90%] max-w-md bg-[#0a0810]/95 backdrop-blur-xl border border-white/10 p-6 rounded-[2rem] shadow-2xl z-[101]"
+          initial={{ opacity: 0, y: -20, scale: 0.95 }} 
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -20, scale: 0.95 }}
+          className="fixed !top-4 !right-4 !left-4 sm:!left-auto sm:!w-80 bg-[#0a0810]/95 backdrop-blur-2xl border border-white/10 p-4 rounded-2xl shadow-2xl z-[9999]"
         >
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                  <Loader2 className="h-5 w-5 text-primary animate-spin" />
+              <div className="flex items-center gap-3 overflow-hidden">
+                <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                  <Loader2 className="h-4 w-4 text-primary animate-spin" />
                 </div>
-                <div className="flex flex-col">
-                  <span className="text-xs font-bold text-white truncate max-w-[200px]">
+                <div className="flex flex-col overflow-hidden">
+                  <span className="text-[10px] font-bold text-white truncate">
                     Uploading {uploadProgress.fileName}
                   </span>
-                  <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">
+                  <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">
                     {uploadProgress.progress}% complete
                   </span>
                 </div>
               </div>
             </div>
-            <Progress value={uploadProgress.progress} className="h-1.5" />
+            <Progress value={uploadProgress.progress} className="h-1" />
           </div>
         </motion.div>
       )}
