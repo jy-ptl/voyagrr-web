@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
-import { Folder, Search, MoreVertical, LayoutGrid, List as ListIcon, ChevronRight, Plus, FolderPlus, Pencil, Trash2, Info, Upload, Download } from "lucide-react";
+import { Folder, Search, MoreVertical, LayoutGrid, List as ListIcon, ChevronRight, Plus, FolderPlus, Pencil, Trash2, Info, Upload, Download, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Progress } from "@/components/ui/progress";
 import { MetadataDialog } from "@/components/drive/MetadataDialog";
 import { FileThumbnail } from "@/components/drive/FileThumbnail";
 import {
@@ -83,6 +84,7 @@ export const MyDrivePage = () => {
   const [itemToDelete, setItemToDelete] = useState<DirectoryItem | null>(null);
   const [itemInfo, setItemInfo] = useState<{ item: DirectoryItem, metadata: FileMetadata } | null>(null);
   const [metadataMap, setMetadataMap] = useState<Record<string | number, FileMetadata>>({});
+  const [uploadProgress, setUploadProgress] = useState<{ fileName: string, progress: number } | null>(null);
   
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -178,16 +180,30 @@ export const MyDrivePage = () => {
   };
 
   const onFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const selectedFiles = e.target.files;
+    if (!selectedFiles || selectedFiles.length === 0) return;
 
-    if (file.size > MAX_FILE_SIZE) {
-      setError("File too large (max 10MB)");
+    const filesArray = Array.from(selectedFiles);
+    const oversizedFiles = filesArray.filter(file => file.size > MAX_FILE_SIZE);
+
+    if (oversizedFiles.length > 0) {
+      setError(`Some files are too large (max 10MB): ${oversizedFiles.map(f => f.name).join(", ")}`);
       return;
     }
 
     try {
-      await storageService.uploadFile(file, currentFolderId);
+      const onProgress = (percent: number) => {
+        setUploadProgress({ 
+          fileName: filesArray.length === 1 ? filesArray[0].name : `${filesArray.length} files`, 
+          progress: percent 
+        });
+      };
+
+      if (filesArray.length === 1) {
+        await storageService.uploadFile(filesArray[0], currentFolderId, onProgress);
+      } else {
+        await storageService.uploadFilesBatch(filesArray, currentFolderId, onProgress);
+      }
       setIsFabOpen(false);
       fetchData(currentFolderId);
     } catch (err: unknown) {
@@ -195,6 +211,7 @@ export const MyDrivePage = () => {
         setError(err.response?.data?.message || "Upload failed");
       }
     } finally {
+      setUploadProgress(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
@@ -470,7 +487,7 @@ export const MyDrivePage = () => {
         >
           <Plus className="h-8 w-8" strokeWidth={2.5} />
         </Button>
-        <input type="file" ref={fileInputRef} className="hidden" onChange={onFileUpload} />
+        <input type="file" ref={fileInputRef} className="hidden" multiple onChange={onFileUpload} />
       </div>
 
       {/* Modals & Dialogs */}
@@ -547,6 +564,34 @@ export const MyDrivePage = () => {
           <Info className="h-4 w-4" />
           <span className="text-xs font-bold">{error}</span>
           <Button variant="ghost" size="sm" onClick={() => setError(null)} className="h-6 w-6 p-0 hover:bg-white/10 rounded-full ml-2">×</Button>
+        </motion.div>
+      )}
+
+      {uploadProgress && (
+        <motion.div 
+          initial={{ opacity: 0, y: 50 }} 
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 50 }}
+          className="fixed bottom-8 left-1/2 -translate-x-1/2 w-[90%] max-w-md bg-[#0a0810]/95 backdrop-blur-xl border border-white/10 p-6 rounded-[2rem] shadow-2xl z-[101]"
+        >
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                  <Loader2 className="h-5 w-5 text-primary animate-spin" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold text-white truncate max-w-[200px]">
+                    Uploading {uploadProgress.fileName}
+                  </span>
+                  <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">
+                    {uploadProgress.progress}% complete
+                  </span>
+                </div>
+              </div>
+            </div>
+            <Progress value={uploadProgress.progress} className="h-1.5" />
+          </div>
         </motion.div>
       )}
     </div>
