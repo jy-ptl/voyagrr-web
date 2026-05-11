@@ -17,5 +17,12 @@ export const tripService = {
   async createTrip(trip: TripCreateRequest): Promise<Trip> {
     const response = await axiosInstance.post<Trip>("/api/trip", trip);
     return response.data;
+  },
+
+  /**
+   * Triggers analysis for a specific trip
+   */
+  async analyzeTrip(tripId: number): Promise<void> {
+    await axiosInstance.post(`/api/trip/analyze/${tripId}`);
   }
 };
