@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import axios from "axios";
-import { Plus, Map, Globe, Search, ArrowRight, Users } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Plus, Map, Globe, Search, ArrowRight, Users, Sparkles, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -68,6 +69,9 @@ const TripsPage = () => {
   const [groupSearch, setGroupSearch] = useState("");
   const [groupResults, setGroupResults] = useState<Group[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
+
+  // Analysis State
+  const [analyzingTrips, setAnalyzingTrips] = useState<Record<number, boolean>>({});
 
   const form = useForm<TripValues>({
     resolver: zodResolver(tripSchema),
@@ -164,6 +168,24 @@ const TripsPage = () => {
     }
   };
 
+  const handleAnalyzeTrip = async (e: React.MouseEvent, tripId: number) => {
+    e.stopPropagation();
+    if (analyzingTrips[tripId]) return;
+
+    setAnalyzingTrips(prev => ({ ...prev, [tripId]: true }));
+    try {
+      await tripService.analyzeTrip(tripId);
+      // In a real app, we might poll for status or show a toast
+    } catch (error) {
+      console.error("Analysis failed", error);
+    } finally {
+      // Keep loading state for a bit to give feedback
+      setTimeout(() => {
+        setAnalyzingTrips(prev => ({ ...prev, [tripId]: false }));
+      }, 2000);
+    }
+  };
+
   const filteredTrips = useMemo(() => trips.filter(trip => 
     trip.title.toLowerCase().includes(searchQuery.toLowerCase())
   ), [trips, searchQuery]);
@@ -240,9 +262,28 @@ const TripsPage = () => {
                       {trip.visibility}
                     </span>
                   </div>
-                  <Button variant="ghost" size="sm" className="h-8 w-8 rounded-lg hover:bg-white/10">
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className={cn(
+                        "h-8 px-2 rounded-lg hover:bg-primary/20 hover:text-primary transition-all gap-1.5 text-[9px] font-black uppercase tracking-widest",
+                        analyzingTrips[trip.id] && "text-primary bg-primary/10"
+                      )}
+                      onClick={(e) => handleAnalyzeTrip(e, trip.id)}
+                      disabled={analyzingTrips[trip.id]}
+                    >
+                      {analyzingTrips[trip.id] ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-3 w-3" />
+                      )}
+                      {analyzingTrips[trip.id] ? "Analyzing" : "Analyze"}
+                    </Button>
+                    <Button variant="ghost" size="sm" className="h-8 w-8 rounded-lg hover:bg-white/10">
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
               </div>
             </Card>
