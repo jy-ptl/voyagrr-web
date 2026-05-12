@@ -2,35 +2,49 @@ import React, { useEffect, useState, useCallback, useMemo } from "react";
 import axios from "axios";
 import { useParams, useNavigate } from "react-router-dom";
 import { 
-  Folder, 
-  Search, 
-  LayoutGrid, 
-  List as ListIcon, 
-  ChevronRight, 
-  Info, 
-  Download, 
-  Sparkles,
+  MoreVertical, 
   Loader2,
   ArrowLeft,
   Globe,
   MapPin,
   Upload,
-  Plus
+  Plus,
+  Pencil,
+  Trash2,
+  FolderPlus
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { MetadataDialog } from "@/components/drive/MetadataDialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { motion, AnimatePresence } from "framer-motion";
 
 // Services & Types
 import { tripService } from "@/services/tripService";
 import { directoryService } from "@/services/directoryService";
 import { storageService } from "@/services/storageService";
+import { metadataService } from "@/services/metadataService";
 import { FileThumbnail } from "@/components/drive/FileThumbnail";
 import type { Trip } from "@/types/trips";
-import type { DirectoryItem } from "@/types/drive";
+import type { DirectoryItem, FileMetadata } from "@/types/drive";
 
 export const TripDetailPage = () => {
   const { tripId } = useParams<{ tripId: string }>();
@@ -39,6 +53,7 @@ export const TripDetailPage = () => {
   // Data State
   const [trip, setTrip] = useState<Trip | null>(null);
   const [items, setItems] = useState<DirectoryItem[]>([]);
+  const [breadcrumbs, setBreadcrumbs] = useState<{ id: string | number | null; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
   
@@ -46,24 +61,48 @@ export const TripDetailPage = () => {
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [searchQuery, setSearchQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
+  
+  // Selection & Info State
+  const [itemToDelete, setItemToDelete] = useState<DirectoryItem | null>(null);
+  const [itemInfo, setItemInfo] = useState<{ item: DirectoryItem, metadata: FileMetadata } | null>(null);
+  const [metadataMap, setMetadataMap] = useState<Record<string | number, FileMetadata>>({});
   const [uploadProgress, setUploadProgress] = useState<{ fileName: string, progress: number } | null>(null);
   const [isFabOpen, setIsFabOpen] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-  const fetchData = useCallback(async () => {
+  const currentFolder = breadcrumbs[breadcrumbs.length - 1];
+  const currentFolderId = currentFolder?.id;
+
+  const fetchData = useCallback(async (folderId?: string | number | null) => {
     if (!tripId) return;
     setLoading(true);
     try {
       const tripData = await tripService.fetchTripById(tripId);
       setTrip(tripData);
       
-      if (tripData.directoryId) {
-        const contents = await directoryService.fetchContents(tripData.directoryId);
-        const combinedItems: DirectoryItem[] = [
-          ...(contents.children || []).map(child => ({ ...child, type: 'directory' as const })),
-          ...(contents.files || []).map(file => ({ ...file, type: 'file' as const }))
-        ];
-        setItems(combinedItems);
+      // Initialize breadcrumbs if empty
+      if (breadcrumbs.length === 0) {
+        setBreadcrumbs([{ id: tripData.directoryId, name: tripData.title }]);
+      }
+
+      const activeFolderId = folderId || tripData.directoryId;
+      const contents = await directoryService.fetchContents(activeFolderId);
+      const combinedItems: DirectoryItem[] = [
+        ...(contents.children || []).map(child => ({ ...child, type: 'directory' as const })),
+        ...(contents.files || []).map(file => ({ ...file, type: 'file' as const }))
+      ];
+      setItems(combinedItems);
+
+      // Batch Fetch Metadata
+      try {
+        const metaResponses = await metadataService.getDirectoryMetadata(activeFolderId);
+        const newMap: Record<string | number, FileMetadata> = {};
+        metaResponses.forEach((m) => {
+          newMap[m.fileId] = m.metadata as FileMetadata;
+        });
+        setMetadataMap(newMap);
+      } catch (mErr) {
+        console.warn("Failed to fetch batch metadata", mErr);
       }
     } catch (err) {
       console.error("Failed to fetch trip details:", err);
@@ -71,11 +110,38 @@ export const TripDetailPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [tripId]);
+  }, [tripId, breadcrumbs.length]);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    fetchData(currentFolderId);
+  }, [currentFolderId, fetchData]);
+
+  const navigateTo = (index: number) => {
+    setBreadcrumbs(prev => prev.slice(0, index + 1));
+  };
+
+  const handleFolderClick = (item: DirectoryItem) => {
+    if (item.type === 'directory') {
+      setBreadcrumbs(prev => [...prev, { id: item.id, name: item.name }]);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!itemToDelete) return;
+    try {
+      if (itemToDelete.type === 'directory') {
+        await directoryService.deleteDirectory(itemToDelete.id);
+      } else {
+        await storageService.deleteFile(itemToDelete.id);
+      }
+      setItemToDelete(null);
+      fetchData(currentFolderId);
+    } catch {
+      setError("Failed to delete item");
+    } finally {
+      setItemToDelete(null);
+    }
+  };
 
   const handleAnalyze = async () => {
     if (!tripId || analyzing) return;
@@ -109,7 +175,7 @@ export const TripDetailPage = () => {
 
   const onFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = e.target.files;
-    if (!selectedFiles || selectedFiles.length === 0 || !trip?.directoryId) return;
+    if (!selectedFiles || selectedFiles.length === 0 || !currentFolderId) return;
 
     const filesArray = Array.from(selectedFiles);
     setError(null);
@@ -123,12 +189,12 @@ export const TripDetailPage = () => {
       };
 
       if (filesArray.length === 1) {
-        await storageService.uploadFile(filesArray[0], trip.directoryId, onProgress);
+        await storageService.uploadFile(filesArray[0], currentFolderId, onProgress);
       } else {
-        await storageService.uploadFilesBatch(filesArray, trip.directoryId, onProgress);
+        await storageService.uploadFilesBatch(filesArray, currentFolderId, onProgress);
       }
       setIsFabOpen(false);
-      fetchData();
+      fetchData(currentFolderId);
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
         setError(err.response?.data?.message || "Upload failed");
@@ -172,10 +238,24 @@ export const TripDetailPage = () => {
           >
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <div className="flex items-center gap-2 text-sm font-bold text-zinc-500">
-            <span>Trips</span>
-            <ChevronRight className="h-3 w-3" />
-            <span className="text-white">{trip?.title}</span>
+          <div className="flex items-center flex-wrap gap-1.5 overflow-hidden">
+            {breadcrumbs.map((crumb, index) => (
+              <React.Fragment key={index}>
+                {index > 0 && <ChevronRight className="h-3 w-3 text-zinc-700 shrink-0" />}
+                <button
+                  onClick={() => navigateTo(index)}
+                  disabled={index === breadcrumbs.length - 1}
+                  className={cn(
+                    "text-sm font-bold transition-all truncate max-w-[150px] outline-none",
+                    index === breadcrumbs.length - 1 
+                      ? "text-white cursor-default" 
+                      : "text-zinc-500 hover:text-primary cursor-pointer"
+                  )}
+                >
+                  {crumb.name}
+                </button>
+              </React.Fragment>
+            ))}
           </div>
         </div>
 
@@ -248,16 +328,14 @@ export const TripDetailPage = () => {
       </Card>
 
       {/* Search & Actions */}
-      <div className="flex items-center justify-between gap-4 px-1">
-        <div className="relative group flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500 group-focus-within:text-primary transition-colors" />
-          <input 
-            placeholder="Search trip assets..." 
-            className="w-full bg-white/5 border border-white/10 pl-10 pr-4 h-11 text-sm focus:outline-none focus:border-primary/50 transition-all rounded-xl text-white placeholder:text-zinc-700"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </div>
+      <div className="relative group max-w-md px-1">
+        <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500 group-focus-within:text-primary transition-colors" />
+        <Input 
+          placeholder="Search trip assets..." 
+          className="bg-white/5 border-white/10 pl-11 h-11 text-xs focus-visible:ring-primary/50 transition-all rounded-xl"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
       </div>
 
       {/* Items Display */}
@@ -282,52 +360,94 @@ export const TripDetailPage = () => {
             view === 'grid' ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5" : "grid-cols-1"
           )}>
             <AnimatePresence mode="popLayout">
-              {filteredItems.map((item, index) => (
-                <motion.div
-                  key={item.id}
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: index * 0.02 }}
-                  layout
-                >
-                  <Card 
-                    className={cn(
-                      "group relative border-white/5 bg-white/5 transition-all duration-300 hover:bg-white/10 cursor-pointer overflow-hidden rounded-2xl flex",
-                      view === 'grid' ? "flex-col" : "p-2 px-4 items-center justify-between h-16"
-                    )}
+              {filteredItems.map((item, index) => {
+                const meta = metadataMap[item.id];
+                return (
+                  <motion.div
+                    key={item.id}
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.01 }}
+                    layout
                   >
-                    <div className={cn("flex items-center gap-3 min-w-0", view === 'grid' ? "flex-col w-full" : "flex-row")}>
-                      <FileThumbnail 
-                        fileId={item.id} 
-                        type={item.type} 
-                        className={view === 'grid' ? "aspect-square w-full" : "h-12 w-12 shrink-0"}
-                      />
-                      <div className={cn("overflow-hidden w-full", view === 'grid' ? "p-3" : "")}>
-                        <p className="truncate text-xs font-bold text-white group-hover:text-primary transition-colors">
-                          {item.name}
-                        </p>
-                        <p className="text-[8px] text-zinc-600 font-black uppercase tracking-[0.2em] mt-0.5">
-                          {item.type}
-                        </p>
+                    <Card 
+                      onClick={() => handleFolderClick(item)}
+                      className={cn(
+                        "group relative border-white/5 bg-white/5 transition-all duration-300 hover:bg-white/10 cursor-pointer overflow-hidden rounded-xl shadow-sm hover:shadow-primary/5 hover:border-primary/20 flex",
+                        view === 'grid' ? "p-3 flex-col items-center text-center gap-3" : "p-2 px-3 items-center justify-between h-14"
+                      )}
+                    >
+                      <div className={cn("flex items-center gap-3 min-w-0", view === 'grid' ? "flex-col w-full" : "flex-row")}>
+                        <FileThumbnail 
+                          fileId={item.id} 
+                          type={item.type} 
+                          className={view === 'grid' ? "h-16 w-16 sm:h-20 sm:w-20 shrink-0" : "h-10 w-10 shrink-0"}
+                        />
+                        <div className="overflow-hidden">
+                          <p className={cn(
+                            "truncate text-[11px] font-bold text-white group-hover:text-primary transition-colors",
+                            view === 'grid' ? "text-center" : "text-left"
+                          )}>
+                            {item.name}
+                          </p>
+                          <div className={cn(
+                            "flex items-center gap-2 mt-0.5 opacity-60",
+                            view === 'grid' ? "justify-center" : "justify-start"
+                          )}>
+                            <p className="text-[8px] text-zinc-600 font-black uppercase tracking-[0.2em]">
+                              {item.type}
+                            </p>
+                            {meta?.analysis?.scene && (
+                              <p className="text-[8px] text-primary font-black uppercase tracking-widest hidden sm:block">
+                                • {meta.analysis.scene}
+                              </p>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                    
-                    <div className={cn(
-                      "opacity-0 group-hover:opacity-100 transition-opacity",
-                      view === 'grid' ? "absolute top-2 right-2" : "relative"
-                    )}>
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="h-8 w-8 rounded-lg bg-black/40 backdrop-blur-md border border-white/10 text-white hover:bg-primary hover:border-primary transition-all"
-                        onClick={(e) => { e.stopPropagation(); handleDownload(item); }}
-                      >
-                        <Download className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </Card>
-                </motion.div>
-              ))}
+                      
+                      <div className={cn(
+                        view === 'grid' ? "absolute top-1 right-1" : "relative ml-2"
+                      )}>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className={cn(
+                                "h-6 w-6 rounded-md text-zinc-600 transition-all hover:bg-white/5 hover:text-white",
+                                view === 'grid' ? "opacity-0 group-hover:opacity-100" : "opacity-100"
+                              )}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <MoreVertical className="h-3 w-3" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="bg-[#0a0810]/98 backdrop-blur-xl border-white/10 text-white rounded-lg p-1 shadow-2xl animate-in zoom-in-95 duration-200">
+                            <DropdownMenuItem className="rounded-md h-8 gap-2 focus:bg-white/5 cursor-pointer text-[10px] font-bold uppercase tracking-wider" onClick={(e) => { e.stopPropagation(); setItemInfo({ item, metadata: meta || {} }); }}>
+                              <Info className="h-3 w-3 text-zinc-500" />
+                              <span>Info</span>
+                            </DropdownMenuItem>
+                            {item.type === 'file' && (
+                              <DropdownMenuItem className="rounded-md h-8 gap-2 focus:bg-white/5 cursor-pointer text-[10px] font-bold uppercase tracking-wider" onClick={(e) => { e.stopPropagation(); handleDownload(item); }}>
+                                <Download className="h-3 w-3 text-zinc-500" />
+                                <span>Download</span>
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem 
+                              className="rounded-md h-8 gap-2 text-destructive focus:bg-destructive/10 focus:text-destructive cursor-pointer text-[10px] font-bold uppercase tracking-wider" 
+                              onClick={(e) => { e.stopPropagation(); setItemToDelete(item); }}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                              <span>Delete</span>
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </Card>
+                  </motion.div>
+                );
+              })}
             </AnimatePresence>
           </div>
         )}
@@ -376,6 +496,29 @@ export const TripDetailPage = () => {
         />
       </div>
 
+      {/* Modals & Dialogs */}
+      <AlertDialog open={!!itemToDelete} onOpenChange={(open) => !open && setItemToDelete(null)}>
+        <AlertDialogContent className="bg-[#0a0810]/95 backdrop-blur-3xl border-white/10 text-white rounded-[2.5rem] p-8 shadow-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-2xl font-black">Hold on!</AlertDialogTitle>
+            <AlertDialogDescription className="text-zinc-400 text-lg leading-relaxed mt-4">
+              Are you sure you want to delete <span className="font-black text-white">"{itemToDelete?.name}"</span>?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-8 gap-4">
+            <AlertDialogCancel className="h-14 rounded-2xl border-white/10 bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white transition-all">Go Back</AlertDialogCancel>
+            <Button onClick={confirmDelete} className="h-14 rounded-2xl bg-destructive text-white hover:bg-destructive/90 shadow-2xl shadow-destructive/20 font-bold px-8">Yes, Delete Forever</Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <MetadataDialog 
+        isOpen={!!itemInfo} 
+        onClose={() => setItemInfo(null)}
+        item={itemInfo?.item || null}
+        metadata={itemInfo?.metadata || null}
+      />
+
       {/* Toasts */}
       <AnimatePresence>
         {error && (
@@ -393,10 +536,10 @@ export const TripDetailPage = () => {
 
         {uploadProgress && (
           <motion.div 
-            initial={{ opacity: 0, y: 20, scale: 0.95 }} 
+            initial={{ opacity: 0, y: -20, scale: 0.95 }} 
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            className="fixed bottom-8 right-32 w-80 bg-[#0a0810]/95 backdrop-blur-2xl border border-white/10 p-4 rounded-2xl shadow-2xl z-[9999]"
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            className="fixed !top-4 !right-4 !left-4 sm:!left-auto sm:!w-80 bg-[#0a0810]/95 backdrop-blur-2xl border border-white/10 p-4 rounded-2xl shadow-2xl z-[9999]"
           >
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
