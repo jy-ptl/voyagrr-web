@@ -24,6 +24,15 @@ export const userService = {
   async getUserById(userId: string): Promise<UserSearchResponse> {
     const response = await axiosInstance.get<UserSearchResponse>(`/api/user/${userId}`);
     return response.data;
+  },
+
+  /**
+   * Gets multiple users by their Keycloak IDs
+   */
+  async getUsersInfoBatch(userIds: string[]): Promise<UserSearchResponse[]> {
+    if (!userIds || userIds.length === 0) return [];
+    const response = await axiosInstance.post<UserSearchResponse[]>(`/api/user/info/batch`, userIds);
+    return response.data;
   }
 };
 

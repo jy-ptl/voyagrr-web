@@ -254,9 +254,7 @@ export const GroupsPage = () => {
                       form.setValue("members", group.members);
 
                       try {
-                        const userDetails = await Promise.all(
-                          group.members.map(id => userService.getUserById(id))
-                        );
+                        const userDetails = await userService.getUsersInfoBatch(group.members);
                         setSelectedUsers(userDetails);
                       } catch (error) {
                         console.error("Failed to fetch member details", error);
