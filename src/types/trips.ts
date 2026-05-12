@@ -4,6 +4,7 @@ export interface Trip {
   description?: string;
   visibility: 'PRIVATE' | 'SHARED';
   status: 'PLANNED' | 'ONGOING' | 'COMPLETED';
+  directoryId?: number;
 }
 
 export interface TripCreateRequest {
