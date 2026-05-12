@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
+import axios from "axios";
 import { useParams, useNavigate } from "react-router-dom";
 import { 
   Folder, 
   Search, 
-  MoreVertical, 
   LayoutGrid, 
   List as ListIcon, 
   ChevronRight, 
@@ -19,7 +19,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
