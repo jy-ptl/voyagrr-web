@@ -16,5 +16,14 @@ export const userService = {
     if (!query) return [];
     const response = await axiosInstance.get<UserSearchResponse[]>(`/api/user/search?query=${encodeURIComponent(query)}`);
     return response.data;
+  },
+
+  /**
+   * Gets a user by their Keycloak ID
+   */
+  async getUserById(userId: string): Promise<UserSearchResponse> {
+    const response = await axiosInstance.get<UserSearchResponse>(`/api/user/${userId}`);
+    return response.data;
   }
 };
+
