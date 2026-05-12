@@ -9,9 +9,15 @@ import {
   MapPin,
   Upload,
   Plus,
-  Pencil,
   Trash2,
-  FolderPlus
+  Folder,
+  Search,
+  LayoutGrid,
+  List as ListIcon,
+  ChevronRight,
+  Info,
+  Download,
+  Sparkles
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -80,12 +86,19 @@ export const TripDetailPage = () => {
       const tripData = await tripService.fetchTripById(tripId);
       setTrip(tripData);
       
-      // Initialize breadcrumbs if empty
-      if (breadcrumbs.length === 0) {
-        setBreadcrumbs([{ id: tripData.directoryId, name: tripData.title }]);
+      const rootDirectoryId = tripData.directoryId;
+      if (!rootDirectoryId) {
+        setError("Trip directory not found");
+        setLoading(false);
+        return;
       }
 
-      const activeFolderId = folderId || tripData.directoryId;
+      // Initialize breadcrumbs if empty
+      if (breadcrumbs.length === 0) {
+        setBreadcrumbs([{ id: rootDirectoryId, name: tripData.title }]);
+      }
+
+      const activeFolderId = (folderId || rootDirectoryId) as string | number;
       const contents = await directoryService.fetchContents(activeFolderId);
       const combinedItems: DirectoryItem[] = [
         ...(contents.children || []).map(child => ({ ...child, type: 'directory' as const })),
