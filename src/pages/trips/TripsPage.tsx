@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { cn } from "@/lib/utils";
 import { Plus, Map, Globe, Search, ArrowRight, Users, Sparkles, Loader2 } from "lucide-react";
@@ -55,6 +56,7 @@ type TripValues = z.infer<typeof tripSchema>;
 
 const TripsPage = () => {
   const [trips, setTrips] = useState<Trip[]>([]);
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
@@ -244,7 +246,8 @@ const TripsPage = () => {
           {filteredTrips.map((trip) => (
             <Card 
               key={trip.id} 
-              className="group relative overflow-hidden bg-white/5 border-white/10 hover:border-primary/50 transition-all duration-300 rounded-2xl"
+              onClick={() => navigate(`/trips/${trip.id}`)}
+              className="group relative overflow-hidden bg-white/5 border-white/10 hover:border-primary/50 transition-all duration-300 rounded-2xl cursor-pointer"
             >
               <div className="aspect-video w-full bg-zinc-900 overflow-hidden relative">
                 <div className="absolute inset-0 bg-gradient-to-t from-[#0a0810] to-transparent z-10" />
@@ -280,7 +283,7 @@ const TripsPage = () => {
                       )}
                       {analyzingTrips[trip.id] ? "Analyzing" : "Analyze"}
                     </Button>
-                    <Button variant="ghost" size="sm" className="h-8 w-8 rounded-lg hover:bg-white/10">
+                    <Button variant="ghost" size="sm" className="h-8 w-8 rounded-lg hover:bg-white/10" onClick={(e) => { e.stopPropagation(); navigate(`/trips/${trip.id}`); }}>
                       <ArrowRight className="h-3.5 w-3.5" />
                     </Button>
                   </div>

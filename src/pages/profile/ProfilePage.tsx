@@ -1,3 +1,4 @@
+import { useEffect, useState, useRef } from "react";
 import { useSelector } from "react-redux";
 import type { RootState } from "@/store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,20 +14,95 @@ import {
   ChevronRight,
   Camera,
   MapPin,
-  Calendar
+  Calendar,
+  Upload,
+  Loader2,
+  Info
 } from "lucide-react";
 import { useDispatch } from "react-redux";
 import { clearAuth } from "@/store/slices/authSlice";
 import { useNavigate } from "react-router-dom";
+import { directoryService } from "@/services/directoryService";
+import { storageService } from "@/services/storageService";
+import { Progress } from "@/components/ui/progress";
+import { motion, AnimatePresence } from "framer-motion";
+import { FileThumbnail } from "@/components/drive/FileThumbnail";
+import type { FileItem } from "@/types/drive";
+import axios from "axios";
 
 export const ProfilePage = () => {
   const { user } = useSelector((state: RootState) => state.auth);
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
+  const [sampleDirId, setSampleDirId] = useState<string | number | null>(null);
+  const [sampleFiles, setSampleFiles] = useState<FileItem[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ fileName: string, progress: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const fetchSampleFiles = async (dirId: string | number) => {
+    try {
+      const contents = await directoryService.fetchContents(dirId);
+      setSampleFiles(contents.files || []);
+    } catch (err) {
+      console.error("Failed to fetch sample files:", err);
+    }
+  };
+
+  useEffect(() => {
+    const fetchSampleDir = async () => {
+      try {
+        const dir = await directoryService.fetchSampleDirectory();
+        setSampleDirId(dir.id);
+        fetchSampleFiles(dir.id);
+      } catch (err) {
+        console.error("Failed to fetch sample directory:", err);
+      }
+    };
+    fetchSampleDir();
+  }, []);
+
   const handleLogout = () => {
     dispatch(clearAuth());
     navigate("/login");
+  };
+
+  const onFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = e.target.files;
+    if (!selectedFiles || selectedFiles.length === 0 || !sampleDirId) return;
+
+    const filesArray = Array.from(selectedFiles);
+    setUploading(true);
+    setError(null);
+
+    try {
+      const onProgress = (percent: number) => {
+        setUploadProgress({ 
+          fileName: filesArray.length === 1 ? filesArray[0].name : `${filesArray.length} files`, 
+          progress: percent 
+        });
+      };
+
+      if (filesArray.length === 1) {
+        await storageService.uploadFile(filesArray[0], sampleDirId, onProgress);
+      } else {
+        await storageService.uploadFilesBatch(filesArray, sampleDirId, onProgress);
+      }
+      // Refresh file list
+      fetchSampleFiles(sampleDirId);
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        setError(err.response?.data?.message || "Upload failed");
+      } else {
+        setError("An unexpected error occurred");
+      }
+    } finally {
+      setUploading(false);
+      setUploadProgress(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   };
 
   const getInitials = (name: string) => {
@@ -158,6 +234,81 @@ export const ProfilePage = () => {
             </Button>
           </CardContent>
         </Card>
+
+        {/* Face Samples Upload */}
+        <Card className="bg-[#0a0a0a]/50 border-white/5 backdrop-blur-xl rounded-[2rem] overflow-hidden md:col-span-3">
+          <CardHeader>
+            <CardTitle className="text-sm font-black uppercase tracking-widest text-zinc-500 flex items-center gap-2">
+              <Camera className="h-4 w-4" /> Face Recognition Samples
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+              <div className="space-y-2 max-w-xl">
+                <h3 className="text-xl font-bold text-white">Improve accuracy with samples</h3>
+                <p className="text-sm text-zinc-500 leading-relaxed">
+                  Upload clear photos of yourself from different angles and lighting conditions. 
+                  This helps our AI identify you more accurately in your trips and group photos.
+                </p>
+              </div>
+              <div className="shrink-0 w-full md:w-auto">
+                <Button 
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading || !sampleDirId}
+                  className="w-full md:w-auto h-11 px-6 rounded-xl bg-primary hover:bg-primary/90 text-white font-black uppercase tracking-widest text-[10px] shadow-lg shadow-primary/20 transition-all active:scale-95"
+                >
+                  {uploading ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <Upload className="h-4 w-4 mr-2" />
+                  )}
+                  {uploading ? "Uploading..." : "Upload Face Samples"}
+                </Button>
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  className="hidden" 
+                  multiple 
+                  accept="image/*" 
+                  onChange={onFileUpload} 
+                />
+              </div>
+            </div>
+
+            {/* Uploaded Samples Grid */}
+            {sampleFiles.length > 0 && (
+              <div className="pt-4 border-t border-white/5">
+                <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-4">
+                  Your Uploaded Samples ({sampleFiles.length})
+                </p>
+                <div className="flex flex-wrap gap-4">
+                  <AnimatePresence>
+                    {sampleFiles.map((file, index) => (
+                      <motion.div
+                        key={file.id}
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ delay: index * 0.05 }}
+                        className="group relative"
+                      >
+                        <FileThumbnail 
+                          fileId={file.id} 
+                          type="file" 
+                          className="h-20 w-20 rounded-xl object-cover border border-white/10 group-hover:border-primary/50 transition-all"
+                        />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl flex items-center justify-center">
+                          <p className="text-[8px] font-bold text-white truncate px-1 w-full text-center">
+                            {file.name}
+                          </p>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* Action List */}
@@ -180,7 +331,7 @@ export const ProfilePage = () => {
           </div>
         ))}
       </div>
-
+ 
       {/* Danger Zone */}
       <div className="pt-4 px-4 flex justify-between items-center text-zinc-600">
         <p className="text-[10px] font-bold uppercase tracking-widest">
@@ -195,6 +346,50 @@ export const ProfilePage = () => {
           Sign Out of Voyagrr
         </Button>
       </div>
+
+      {/* Notification Toasts */}
+      <AnimatePresence>
+        {error && (
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }} 
+            animate={{ opacity: 1, y: 0 }} 
+            exit={{ opacity: 0, y: 20 }}
+            className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-destructive/90 backdrop-blur-xl border border-white/10 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 z-[100]"
+          >
+            <Info className="h-4 w-4" />
+            <span className="text-xs font-bold">{error}</span>
+            <Button variant="ghost" size="sm" onClick={() => setError(null)} className="h-6 w-6 p-0 hover:bg-white/10 rounded-full ml-2">×</Button>
+          </motion.div>
+        )}
+
+        {uploadProgress && (
+          <motion.div 
+            initial={{ opacity: 0, y: 20, scale: 0.95 }} 
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.95 }}
+            className="fixed bottom-8 right-8 w-80 bg-[#0a0810]/95 backdrop-blur-2xl border border-white/10 p-4 rounded-2xl shadow-2xl z-[9999]"
+          >
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3 overflow-hidden">
+                  <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                    <Loader2 className="h-4 w-4 text-primary animate-spin" />
+                  </div>
+                  <div className="flex flex-col overflow-hidden">
+                    <span className="text-[10px] font-bold text-white truncate">
+                      Uploading {uploadProgress.fileName}
+                    </span>
+                    <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">
+                      {uploadProgress.progress}% complete
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <Progress value={uploadProgress.progress} className="h-1" />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

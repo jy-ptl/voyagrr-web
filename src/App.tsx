@@ -8,6 +8,7 @@ import { LoginPage } from "./pages/auth/LoginPage";
 import { SignupPage } from "./pages/auth/SignupPage";
 import { MyDrivePage } from "./pages/drive/MyDrivePage";
 import TripsPage from "./pages/trips/TripsPage";
+import { TripDetailPage } from "./pages/trips/TripDetailPage";
 import { ProfilePage } from "./pages/profile/ProfilePage";
 import GroupsPage from "./pages/groups/GroupsPage";
 
@@ -41,6 +42,7 @@ function App() {
                   <Route path="/feed" element={<HomeFeed />} />
                   <Route path="/my-drive" element={<MyDrivePage />} />
                   <Route path="/trips" element={<TripsPage />} />
+                  <Route path="/trips/:tripId" element={<TripDetailPage />} />
                   <Route path="/profile" element={<ProfilePage />} />
                   <Route path="/groups" element={<GroupsPage />} />
                   {/* Add more internal routes here */}
