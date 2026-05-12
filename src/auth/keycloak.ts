@@ -28,6 +28,7 @@ export const initKeycloak = () => {
         token: keycloak.token || '',
         refreshToken: keycloak.refreshToken || '',
         user: {
+          id: keycloak.tokenParsed?.sub || '',
           username: keycloak.tokenParsed?.preferred_username || '',
           email: keycloak.tokenParsed?.email || '',
           firstName: keycloak.tokenParsed?.given_name || '',
@@ -49,6 +50,7 @@ export const initKeycloak = () => {
             token: keycloak.token || '',
             refreshToken: keycloak.refreshToken || '',
             user: {
+              id: keycloak.tokenParsed?.sub || '',
               username: keycloak.tokenParsed?.preferred_username || '',
               email: keycloak.tokenParsed?.email || '',
               firstName: keycloak.tokenParsed?.given_name || '',
