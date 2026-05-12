@@ -13,7 +13,15 @@ export interface GroupCreateRequest {
   members: string[];
 }
 
+export interface GroupUpdateRequest {
+  name?: string;
+  members?: string[];
+  addMembers?: string[];
+  removeMembers?: string[];
+}
+
 export const groupService = {
+
   /**
    * Fetches all groups the user belongs to
    */
@@ -36,6 +44,15 @@ export const groupService = {
   async deleteGroup(groupId: number): Promise<void> {
     await axiosInstance.delete(`/api/group/${groupId}`);
   },
+
+  /**
+   * Updates a group
+   */
+  async updateGroup(groupId: number, request: GroupUpdateRequest): Promise<Group> {
+    const response = await axiosInstance.put<Group>(`/api/group/${groupId}`, request);
+    return response.data;
+  },
+
 
   /**
    * Search groups by query

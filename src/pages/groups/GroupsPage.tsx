@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import axios from "axios";
-import { Plus, Users, Search, Trash2, ArrowRight, UserPlus } from "lucide-react";
+import { Plus, Users, Search, Trash2, UserPlus, Pencil } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -56,7 +57,9 @@ export const GroupsPage = () => {
   const [createLoading, setCreateLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [groupToDelete, setGroupToDelete] = useState<Group | null>(null);
-  
+  const [editingGroup, setEditingGroup] = useState<Group | null>(null);
+
+
   // User Search State
   const [userSearch, setUserSearch] = useState("");
   const [userResults, setUserResults] = useState<UserSearchResponse[]>([]);
@@ -90,7 +93,13 @@ export const GroupsPage = () => {
   }, [selectedUsers]);
 
   const toggleUserSelection = (user: UserSearchResponse) => {
+    // Prevent removing owner when editing
+    if (editingGroup && user.keycloakUserId === editingGroup.ownerId) {
+      return;
+    }
+
     const isSelected = selectedUsers.find(s => s.keycloakUserId === user.keycloakUserId);
+
     let newSelection;
     if (isSelected) {
       newSelection = selectedUsers.filter(s => s.keycloakUserId !== user.keycloakUserId);
@@ -120,22 +129,32 @@ export const GroupsPage = () => {
     });
   }, [fetchGroups]);
 
-  const onGroupCreate = async (values: GroupValues) => {
+  const onGroupSubmit = async (values: GroupValues) => {
     setCreateLoading(true);
     try {
-      const newGroup = await groupService.createGroup(values as GroupCreateRequest);
-      setGroups(prev => [...prev, newGroup]);
+      if (editingGroup) {
+        const updatedGroup = await groupService.updateGroup(editingGroup.groupId, {
+          name: values.name,
+          members: values.members,
+        });
+        setGroups(prev => prev.map(g => g.groupId === updatedGroup.groupId ? updatedGroup : g));
+      } else {
+        const newGroup = await groupService.createGroup(values as GroupCreateRequest);
+        setGroups(prev => [...prev, newGroup]);
+      }
       setIsModalOpen(false);
+      setEditingGroup(null);
       form.reset();
       setSelectedUsers([]);
     } catch (error: unknown) {
       if (axios.isAxiosError(error)) {
-        console.error("Failed to create group", error.response?.data);
+        console.error("Failed to process group", error.response?.data);
       }
     } finally {
       setCreateLoading(false);
     }
   };
+
 
   const onGroupDelete = async () => {
     if (!groupToDelete) return;
@@ -148,7 +167,7 @@ export const GroupsPage = () => {
     }
   };
 
-  const filteredGroups = useMemo(() => groups.filter(group => 
+  const filteredGroups = useMemo(() => groups.filter(group =>
     group.name.toLowerCase().includes(searchQuery.toLowerCase())
   ), [groups, searchQuery]);
 
@@ -159,8 +178,14 @@ export const GroupsPage = () => {
           <h2 className="text-3xl font-bold tracking-tight text-white mb-0.5">Community Groups</h2>
           <p className="text-xs text-zinc-500">Collaborate and share memories with your travel circles.</p>
         </div>
-        <Button 
-          onClick={() => setIsModalOpen(true)}
+        <Button
+          onClick={() => {
+            setEditingGroup(null);
+            form.reset({ name: "", members: [] });
+            setSelectedUsers([]);
+            setIsModalOpen(true);
+          }}
+
           className="bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20 h-10 px-5 gap-2 rounded-xl text-sm"
         >
           <UserPlus className="h-4 w-4" />
@@ -170,8 +195,8 @@ export const GroupsPage = () => {
 
       <div className="relative group max-w-xl">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500 group-focus-within:text-primary transition-colors" />
-        <Input 
-          placeholder="Find your circles..." 
+        <Input
+          placeholder="Find your circles..."
           className="bg-white/5 border-white/10 pl-10 h-11 text-sm focus-visible:ring-primary/50 transition-all rounded-xl"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
@@ -193,9 +218,15 @@ export const GroupsPage = () => {
           <p className="text-xs text-zinc-500 max-w-xs mx-auto mb-6">
             Travel is better together. Create a group to start sharing trips and media with friends.
           </p>
-          <Button 
-            onClick={() => setIsModalOpen(true)}
-            variant="outline" 
+          <Button
+            onClick={() => {
+              setEditingGroup(null);
+              form.reset({ name: "", members: [] });
+              setSelectedUsers([]);
+              setIsModalOpen(true);
+            }}
+
+            variant="outline"
             className="border-white/10 bg-white/5 hover:bg-white/10 h-10 px-6 rounded-xl text-xs"
           >
             Create Your First Group
@@ -204,41 +235,67 @@ export const GroupsPage = () => {
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filteredGroups.map((group) => (
-            <Card 
-              key={group.groupId} 
+            <Card
+              key={group.groupId}
               className="group relative overflow-hidden bg-white/5 border-white/10 hover:border-primary/50 transition-all duration-300 rounded-2xl p-6"
             >
               <div className="flex items-start justify-between mb-4">
                 <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform duration-500">
                   <Users className="h-6 w-6" />
                 </div>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  className="h-8 w-8 text-zinc-500 hover:text-destructive hover:bg-destructive/10 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
-                  onClick={() => setGroupToDelete(group)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-              
-              <h4 className="text-lg font-bold text-white mb-1 group-hover:text-primary transition-colors">{group.name}</h4>
-              <p className="text-xs text-zinc-400 line-clamp-2 h-8 mb-4">{group.description || "No description provided."}</p>
-              
-              <div className="flex items-center justify-between mt-auto pt-4 border-t border-white/5">
-                <div className="flex -space-x-2">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="h-6 w-6 rounded-full border-2 border-[#0a0810] bg-zinc-800 flex items-center justify-center text-[8px] font-bold text-zinc-400">
-                      U{i}
-                    </div>
-                  ))}
-                  <div className="h-6 w-6 rounded-full border-2 border-[#0a0810] bg-primary/20 flex items-center justify-center text-[8px] font-bold text-primary">
-                    +5
-                  </div>
+                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-zinc-500 hover:text-primary hover:bg-primary/10 rounded-lg"
+                    onClick={async () => {
+                      setEditingGroup(group);
+                      form.setValue("name", group.name);
+                      form.setValue("members", group.members);
+
+                      try {
+                        const userDetails = await Promise.all(
+                          group.members.map(id => userService.getUserById(id))
+                        );
+                        setSelectedUsers(userDetails);
+                      } catch (error) {
+                        console.error("Failed to fetch member details", error);
+                        setSelectedUsers(group.members.map(id => ({
+                          keycloakUserId: id,
+                          username: id,
+                          firstName: "User",
+                          lastName: id,
+                          email: ""
+                        })));
+                      }
+                      setIsModalOpen(true);
+                    }}
+
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-zinc-500 hover:text-destructive hover:bg-destructive/10 rounded-lg"
+                    onClick={() => setGroupToDelete(group)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </div>
-                <Button variant="ghost" size="sm" className="h-8 w-8 rounded-lg hover:bg-white/10">
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
+
+              </div>
+
+              <h4 className="text-lg font-bold text-white mb-1 group-hover:text-primary transition-colors">{group.name}</h4>
+
+
+              <div className="flex items-center justify-between mt-auto pt-4 border-t border-white/5">
+                <div className="flex items-center gap-1.5 text-zinc-400 bg-white/5 px-2.5 py-1 rounded-lg border border-white/5">
+                  <Users className="h-3 w-3 text-primary" />
+                  <span className="text-[10px] font-bold tracking-tight">{group.members.length} Members</span>
+                </div>
+
+
               </div>
             </Card>
           ))}
@@ -251,16 +308,22 @@ export const GroupsPage = () => {
         if (!open) {
           form.reset();
           setSelectedUsers([]);
+          setEditingGroup(null);
         }
+
       }}>
         <DialogContent className="sm:max-w-[500px] bg-[#0a0810]/95 backdrop-blur-3xl border-white/10 text-white rounded-[2rem] p-0 overflow-hidden shadow-2xl">
           <DialogHeader className="p-6 bg-white/5 border-b border-white/5">
-            <DialogTitle className="text-xl font-black">Create Circle</DialogTitle>
-            <DialogDescription className="text-xs text-zinc-400 mt-1">Start a new group to collaborate on your journeys.</DialogDescription>
+            <DialogTitle className="text-xl font-black">{editingGroup ? "Edit Circle" : "Create Circle"}</DialogTitle>
+            <DialogDescription className="text-xs text-zinc-400 mt-1">
+              {editingGroup ? "Modify your group details and members." : "Start a new group to collaborate on your journeys."}
+            </DialogDescription>
+
           </DialogHeader>
           <div className="p-6 space-y-6">
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onGroupCreate)} className="space-y-6">
+              <form onSubmit={form.handleSubmit(onGroupSubmit)} className="space-y-6">
+
                 <FormField control={form.control} name="name" render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-zinc-500 text-[10px] font-black uppercase tracking-widest ml-1">Group Name</FormLabel>
@@ -271,32 +334,35 @@ export const GroupsPage = () => {
 
                 <div className="space-y-4">
                   <label className="text-zinc-500 text-[10px] font-black uppercase tracking-widest ml-1 block">Add Members</label>
-                  
+
                   {/* Selected Members Chips */}
                   <div className="flex flex-wrap gap-2">
                     {selectedUsers.map(user => (
                       <Badge key={user.keycloakUserId} className="bg-primary/20 text-primary border-primary/30 px-2 py-1 gap-1 rounded-lg">
                         {user.username}
-                        <X className="h-3 w-3 cursor-pointer hover:text-white" onClick={() => toggleUserSelection(user)} />
+                        {(!editingGroup || user.keycloakUserId !== editingGroup.ownerId) && (
+                          <X className="h-3 w-3 cursor-pointer hover:text-white" onClick={() => toggleUserSelection(user)} />
+                        )}
                       </Badge>
                     ))}
                   </div>
 
+
                   <div className="relative group">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500 group-focus-within:text-primary" />
-                    <Input 
-                      placeholder="Search by username or email..." 
+                    <Input
+                      placeholder="Search by username or email..."
                       className="bg-white/5 border-white/10 pl-10 h-11 rounded-xl focus:ring-primary/50 text-sm"
                       value={userSearch}
                       onChange={(e) => handleUserSearch(e.target.value)}
                     />
-                    
+
                     {/* Search Results Dropdown */}
                     {userResults.length > 0 && (
                       <Card className="absolute top-full left-0 right-0 mt-2 z-50 bg-[#0a0810]/98 border-white/10 shadow-2xl rounded-xl overflow-hidden max-h-48 overflow-y-auto">
                         <ScrollArea className="h-full">
                           {userResults.map(user => (
-                            <div 
+                            <div
                               key={user.keycloakUserId}
                               className="p-3 flex items-center justify-between hover:bg-white/5 cursor-pointer transition-colors"
                               onClick={() => toggleUserSelection(user)}
@@ -321,8 +387,9 @@ export const GroupsPage = () => {
                 <DialogFooter className="pt-4 border-t border-white/5">
                   <Button variant="ghost" type="button" onClick={() => setIsModalOpen(false)} className="text-zinc-500 h-10 px-4 rounded-xl text-xs">Cancel</Button>
                   <Button type="submit" disabled={createLoading} className="bg-primary text-white shadow-xl shadow-primary/20 h-10 px-8 rounded-xl font-bold text-xs transition-all hover:scale-[1.02]">
-                    {createLoading ? "Creating..." : "Create Circle"}
+                    {createLoading ? "Saving..." : editingGroup ? "Update Circle" : "Create Circle"}
                   </Button>
+
                 </DialogFooter>
               </form>
             </Form>
@@ -341,7 +408,7 @@ export const GroupsPage = () => {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="bg-white/5 border-white/10 text-white hover:bg-white/10 rounded-xl">Cancel</AlertDialogCancel>
-            <AlertDialogAction 
+            <AlertDialogAction
               className="bg-destructive hover:bg-destructive/90 text-white rounded-xl"
               onClick={onGroupDelete}
             >
