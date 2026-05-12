@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useSelector } from "react-redux";
+import type { RootState } from "@/store";
 import axios from "axios";
 import { Plus, Users, Search, Trash2, UserPlus, Pencil } from "lucide-react";
 
@@ -58,6 +60,7 @@ export const GroupsPage = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [groupToDelete, setGroupToDelete] = useState<Group | null>(null);
   const [editingGroup, setEditingGroup] = useState<Group | null>(null);
+  const { user: currentUser } = useSelector((state: RootState) => state.auth);
 
 
   // User Search State
@@ -243,44 +246,46 @@ export const GroupsPage = () => {
                 <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform duration-500">
                   <Users className="h-6 w-6" />
                 </div>
-                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-zinc-500 hover:text-primary hover:bg-primary/10 rounded-lg"
-                    onClick={async () => {
-                      setEditingGroup(group);
-                      form.setValue("name", group.name);
-                      form.setValue("members", group.members);
+                {currentUser?.id === group.ownerId && (
+                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-zinc-500 hover:text-primary hover:bg-primary/10 rounded-lg"
+                      onClick={async () => {
+                        setEditingGroup(group);
+                        form.setValue("name", group.name);
+                        form.setValue("members", group.members);
 
-                      try {
-                        const userDetails = await userService.getUsersInfoBatch(group.members);
-                        setSelectedUsers(userDetails);
-                      } catch (error) {
-                        console.error("Failed to fetch member details", error);
-                        setSelectedUsers(group.members.map(id => ({
-                          keycloakUserId: id,
-                          username: id,
-                          firstName: "User",
-                          lastName: id,
-                          email: ""
-                        })));
-                      }
-                      setIsModalOpen(true);
-                    }}
+                        try {
+                          const userDetails = await userService.getUsersInfoBatch(group.members);
+                          setSelectedUsers(userDetails);
+                        } catch (error) {
+                          console.error("Failed to fetch member details", error);
+                          setSelectedUsers(group.members.map(id => ({
+                            keycloakUserId: id,
+                            username: id,
+                            firstName: "User",
+                            lastName: id,
+                            email: ""
+                          })));
+                        }
+                        setIsModalOpen(true);
+                      }}
 
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-zinc-500 hover:text-destructive hover:bg-destructive/10 rounded-lg"
-                    onClick={() => setGroupToDelete(group)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-zinc-500 hover:text-destructive hover:bg-destructive/10 rounded-lg"
+                      onClick={() => setGroupToDelete(group)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
 
               </div>
 
