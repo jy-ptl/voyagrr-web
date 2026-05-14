@@ -68,7 +68,7 @@ axiosInstance.interceptors.response.use(
           originalRequest.headers.Authorization = `Bearer ${newToken}`;
           return axiosInstance(originalRequest);
         }
-      } catch (refreshError: any) {
+      } catch (refreshError: unknown) {
         // If refresh fails (e.g., refresh token expired), log out the user
         store.dispatch(clearAuth());
         window.location.href = '/login';

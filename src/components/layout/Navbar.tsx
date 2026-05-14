@@ -1,4 +1,4 @@
-import { Search, Bell, User, LogOut, Settings, Menu } from "lucide-react";
+import { Search, Bell, User, LogOut, Settings, Menu, Download } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
@@ -14,6 +14,12 @@ import { useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import { logout } from "@/auth/keycloak";
 import type { RootState } from "@/store";
+import React from "react";
+
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+};
 
 interface NavbarProps {
   onMenuClick?: () => void;
@@ -22,6 +28,39 @@ interface NavbarProps {
 export const Navbar = ({ onMenuClick }: NavbarProps) => {
   const { user } = useSelector((state: RootState) => state.auth);
   const navigate = useNavigate();
+  const [installPrompt, setInstallPrompt] = React.useState<BeforeInstallPromptEvent | null>(null);
+  const [isStandalone, setIsStandalone] = React.useState(() =>
+    window.matchMedia("(display-mode: standalone)").matches ||
+    (window.navigator as Navigator & { standalone?: boolean }).standalone === true,
+  );
+
+  React.useEffect(() => {
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event as BeforeInstallPromptEvent);
+    };
+
+    const handleAppInstalled = () => {
+      setInstallPrompt(null);
+      setIsStandalone(true);
+    };
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    window.addEventListener("appinstalled", handleAppInstalled);
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      window.removeEventListener("appinstalled", handleAppInstalled);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!installPrompt) return;
+
+    await installPrompt.prompt();
+    await installPrompt.userChoice;
+    setInstallPrompt(null);
+  };
 
   return (
     <nav className="sticky top-0 z-40 flex h-16 w-full items-center justify-between border-b border-white/5 bg-[#0a0810]/70 px-4 backdrop-blur-xl lg:px-8">
@@ -29,6 +68,14 @@ export const Navbar = ({ onMenuClick }: NavbarProps) => {
         <Button variant="ghost" size="icon" className="lg:hidden" onClick={onMenuClick}>
           <Menu className="h-5 w-5 text-muted-foreground" />
         </Button>
+
+        <div className="hidden items-center gap-3 lg:flex">
+          <img src="/favicon.svg" alt="VOYAGRR" className="h-8 w-8 drop-shadow-[0_0_18px_rgba(134,59,255,0.45)]" />
+          <div className="leading-none">
+            <p className="text-sm font-black tracking-[0.35em] text-white">VOYAGRR</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-zinc-500">Travel workspace</p>
+          </div>
+        </div>
         
         <div className="relative hidden w-full max-w-lg sm:block">
           <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
@@ -40,6 +87,17 @@ export const Navbar = ({ onMenuClick }: NavbarProps) => {
       </div>
 
       <div className="flex items-center gap-2 sm:gap-4">
+        {!isStandalone && installPrompt && (
+          <Button
+            variant="outline"
+            className="hidden items-center gap-2 border-white/10 bg-white/5 text-xs font-bold uppercase tracking-wider text-white hover:bg-white/10 sm:inline-flex"
+            onClick={() => void handleInstallClick()}
+          >
+            <Download className="h-4 w-4" />
+            Install
+          </Button>
+        )}
+
         <Button variant="ghost" size="icon" className="relative text-zinc-400 hover:text-white">
           <Bell className="h-5 w-5" />
           <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-primary shadow-[0_0_8px_rgba(170,59,255,0.6)]" />

@@ -14,7 +14,10 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
   return (
     <DriveBreadcrumbProvider>
       <div className="flex min-h-screen bg-[#08060d]">
-        <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
+        <Sidebar
+          isOpen={isSidebarOpen}
+          onClose={() => setIsSidebarOpen(false)}
+        />
         <div className="flex flex-1 flex-col lg:pl-72">
           <Navbar onMenuClick={() => setIsSidebarOpen(true)} />
           <main className="flex-1 p-4 lg:p-6">

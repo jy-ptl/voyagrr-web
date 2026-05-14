@@ -1,0 +1,42 @@
+{
+  "name": "VOYAGRR",
+  "short_name": "VOYAGRR",
+  "description": "A travel workspace for drives, trips, groups, and media.",
+  "id": "/",
+  "start_url": "/my-drive",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#08060d",
+  "theme_color": "#08060d",
+  "icons": [
+    {
+      "src": "/pwa-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "My Drive",
+      "short_name": "Drive",
+      "url": "/my-drive"
+    },
+    {
+      "name": "Trips",
+      "short_name": "Trips",
+      "url": "/trips"
+    },
+    {
+      "name": "Groups",
+      "short_name": "Groups",
+      "url": "/groups"
+    }
+  ]
+}

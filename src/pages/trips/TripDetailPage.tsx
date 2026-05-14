@@ -25,6 +25,25 @@ import type { DirectoryItem, FileMetadata } from "@/types/drive";
 type Location = { lat: number, lon: number };
 type Person = { userId: string, firstName: string, username: string, avatarUrl?: string };
 
+type EmotionRecord = {
+  emotion: string;
+};
+
+type TagRecord = {
+  tag: string;
+};
+
+type FaceRecord = {
+  userId?: string | null;
+  user?: {
+    firstName: string;
+    username: string;
+    avatarUrl?: string;
+  } | null;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
+
 // --- Helpers ---
 const extractLocation = (meta: FileMetadata | undefined): Location | null => {
   if (!meta?.file?.location) return null;
@@ -32,11 +51,15 @@ const extractLocation = (meta: FileMetadata | undefined): Location | null => {
     if (typeof meta.file.location === 'string') {
       const parsed = JSON.parse(meta.file.location);
       if (parsed.lat && parsed.lon) return parsed;
-    } else if (typeof meta.file.location === 'object') {
-      const loc = meta.file.location as any;
-      if (loc.lat && loc.lon) return { lat: loc.lat, lon: loc.lon };
+    } else {
+      const loc = meta.file.location as unknown;
+      if (isRecord(loc) && typeof loc.lat === "number" && typeof loc.lon === "number") {
+        return { lat: loc.lat, lon: loc.lon };
+      }
     }
-  } catch (e) {}
+  } catch (error) {
+    console.warn("Failed to parse trip location", error);
+  }
   return null;
 };
 
@@ -50,24 +73,24 @@ const extractDate = (meta: FileMetadata | undefined): Date | null => {
 
 const extractEmotions = (meta: FileMetadata | undefined): string[] => {
   if (!meta?.analysis?.emotions) return [];
-  return meta.analysis.emotions.map((e: any) => typeof e === 'string' ? e : e.emotion).filter(Boolean);
+  return meta.analysis.emotions.map((emotion: EmotionRecord | string) => typeof emotion === 'string' ? emotion : emotion.emotion).filter(Boolean);
 };
 
 const extractTags = (meta: FileMetadata | undefined): string[] => {
   if (!meta?.analysis?.tags) return [];
-  return meta.analysis.tags.map((t: any) => t.tag).filter(Boolean);
+  return meta.analysis.tags.map((tag: TagRecord) => tag.tag).filter(Boolean);
 };
 
 const extractPeople = (meta: FileMetadata | undefined): Person[] => {
   if (!meta?.recognition?.faces) return [];
   const people: Person[] = [];
-  meta.recognition.faces.forEach((f: any) => {
-    if (f.user && f.user.firstName) {
+  meta.recognition.faces.forEach((face: FaceRecord) => {
+    if (face.user && face.user.firstName) {
       people.push({
-        userId: f.userId || f.user.username,
-        firstName: f.user.firstName,
-        username: f.user.username,
-        avatarUrl: f.user.avatarUrl
+        userId: face.userId || face.user.username,
+        firstName: face.user.firstName,
+        username: face.user.username,
+        avatarUrl: face.user.avatarUrl
       });
     }
   });
@@ -108,6 +131,27 @@ const FullQualityImage = ({ fileId, className }: { fileId: string | number, clas
   }
   
   return <img src={url} alt="Full quality" className={cn("h-full w-full object-contain", className)} />;
+};
+
+const ReelAutoAdvance = ({
+  enabled,
+  reelLength,
+  onAdvance,
+}: {
+  enabled: boolean;
+  reelLength: number;
+  onAdvance: () => void;
+}) => {
+  useEffect(() => {
+    if (!enabled || reelLength < 2) {
+      return;
+    }
+
+    const timer = window.setTimeout(onAdvance, 4000);
+    return () => window.clearTimeout(timer);
+  }, [enabled, onAdvance, reelLength]);
+
+  return null;
 };
 
 export const TripDetailPage = () => {
@@ -166,15 +210,15 @@ export const TripDetailPage = () => {
       } catch (mErr) {
         console.warn("Failed to fetch batch metadata", mErr);
       }
-    } catch (err) {
-      console.error("Failed to fetch trip details:", err);
+    } catch (error) {
+      console.error("Failed to fetch trip details:", error);
     } finally {
       setLoading(false);
     }
   }, [tripId]);
 
   useEffect(() => {
-    fetchData();
+    void Promise.resolve().then(fetchData);
   }, [fetchData]);
 
   const handleAnalyze = async () => {
@@ -186,7 +230,7 @@ export const TripDetailPage = () => {
         setAnalyzing(false);
         fetchData();
       }, 2000);
-    } catch (err) {
+    } catch {
       setAnalyzing(false);
     }
   };
@@ -698,18 +742,11 @@ export const TripDetailPage = () => {
               </div>
             </div>
             
-            {/* Auto-play logic */}
-            <React.Suspense fallback={null}>
-              {React.createElement(() => {
-                useEffect(() => {
-                  const timer = setTimeout(() => {
-                    setReelIndex((prev) => (prev + 1) % reelItems.length);
-                  }, 4000);
-                  return () => clearTimeout(timer);
-                }, [reelIndex]);
-                return null;
-              })}
-            </React.Suspense>
+            <ReelAutoAdvance
+              enabled={isReelOpen && reelItems.length > 1}
+              reelLength={reelItems.length}
+              onAdvance={() => setReelIndex((prev) => (prev + 1) % reelItems.length)}
+            />
           </motion.div>
         )}
       </AnimatePresence>

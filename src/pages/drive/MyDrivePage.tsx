@@ -223,7 +223,7 @@ export const MyDrivePage = () => {
         setLoading(false);
       }
     },
-    [handleLogout],
+    [handleLogout, setChildDirectories, setChildDirectoriesFolderId],
   );
 
   const uploadFiles = useCallback(
