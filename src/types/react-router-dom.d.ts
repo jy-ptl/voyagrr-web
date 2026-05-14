@@ -29,7 +29,7 @@ declare module "react-router-dom" {
 
   export const BrowserRouter: React.ComponentType<BrowserRouterProps>;
   export const Routes: React.ComponentType<RoutesProps>;
-  export const Route: React.ComponentType<any>;
+  export const Route: React.ComponentType<Record<string, unknown>>;
   export const Navigate: React.ComponentType<NavigateProps>;
   export const Link: React.ForwardRefExoticComponent<
     React.PropsWithoutRef<LinkProps> & React.RefAttributes<HTMLAnchorElement>

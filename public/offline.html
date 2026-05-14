@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#08060d" />
+    <title>VOYAGRR Offline</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+        background:
+          radial-gradient(circle at top, rgba(134, 59, 255, 0.24), transparent 30%),
+          linear-gradient(180deg, #0a0810 0%, #08060d 100%);
+        color: #fff;
+      }
+
+      .card {
+        max-width: 24rem;
+        padding: 2rem;
+        text-align: center;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 1.5rem;
+        background: rgba(255, 255, 255, 0.04);
+        backdrop-filter: blur(24px);
+      }
+
+      img {
+        width: 4rem;
+        height: 4rem;
+        margin-bottom: 1rem;
+      }
+
+      h1 {
+        margin: 0;
+        letter-spacing: 0.35em;
+        font-size: 1.25rem;
+      }
+
+      p {
+        margin: 0.75rem 0 0;
+        color: #a1a1aa;
+        line-height: 1.5;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <img src="/favicon.svg" alt="VOYAGRR" />
+      <h1>VOYAGRR</h1>
+      <p>You are offline right now. Reconnect to continue browsing your drive, trips, and groups.</p>
+    </main>
+  </body>
+</html>

@@ -40,7 +40,7 @@ interface SidebarProps {
 
 export const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
   const pathname = window.location.pathname;
-  const { breadcrumbs, setBreadcrumbs, childDirectories, childDirectoriesFolderId } = useDriveBreadcrumbs();
+  const { breadcrumbs, setBreadcrumbs, childDirectories } = useDriveBreadcrumbs();
   const isDriveRoute = pathname.startsWith("/my-drive");
   const [expandedBreadcrumbIds, setExpandedBreadcrumbIds] = React.useState<Set<string | number>>(new Set(["root"]));
 
@@ -190,27 +190,11 @@ export const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
   };
 
   React.useEffect(() => {
-    if (!isDriveRoute || breadcrumbs.length === 0) {
-      return;
-    }
-
-    const activeFolder = breadcrumbs[breadcrumbs.length - 1];
-    if (childDirectoriesFolderId !== activeFolder.id) {
-      return;
-    }
-
-    cacheChildrenForParent(activeFolder.id, childDirectories);
-    childDirectories.forEach(child => {
-      void probeFolderHasChildren(child.id);
-    });
-  }, [breadcrumbs, cacheChildrenForParent, childDirectories, childDirectoriesFolderId, isDriveRoute, probeFolderHasChildren]);
-
-  React.useEffect(() => {
     if (!isDriveRoute) {
       return;
     }
 
-    const visibleRoots = childrenByParent.root || childDirectories;
+    const visibleRoots = childDirectories;
 
     const walkVisibleFolders = (folders: { id: string | number | null; name: string }[]) => {
       folders.forEach(folder => {
@@ -504,7 +488,8 @@ export const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
         isOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         <div className="flex h-16 items-center justify-between px-6">
-          <button type="button" onClick={() => { onClose?.(); window.location.href = "/"; }}>
+          <button type="button" onClick={() => { onClose?.(); window.location.href = "/"; }} className="flex items-center gap-3">
+            <img src="/favicon.svg" alt="VOYAGRR" className="h-9 w-9 drop-shadow-[0_0_18px_rgba(134,59,255,0.45)]" />
             <h1 className="text-2xl font-bold tracking-tighter bg-gradient-to-r from-primary to-purple-400 bg-clip-text text-transparent">
               VOYAGRR
             </h1>
@@ -561,7 +546,7 @@ export const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
               );
 
               if (item.label === "My Drive") {
-                const rootChildren = childrenByParent.root || childDirectories;
+                const rootChildren = childDirectories;
 
                 return (
                   <div key={item.label} className="space-y-1">
