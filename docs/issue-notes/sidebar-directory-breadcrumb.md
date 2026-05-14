@@ -30,6 +30,6 @@ Follow-ups / suggestions
 - Consider debouncing or rate-limiting rapid `voyagrr:drive-refresh` events if many operations fire in quick succession.
 - We could add per-folder optimistic UI updates for create/delete/rename to improve perceived latency (currently the code updates local caches, which is already good).
 
-Notes on style
+Notes
 
-- Language in this document has been rewritten for clarity and to read naturally. The code itself follows existing repository conventions and does not contain AI-generated artifacts in names or comments.
+- The implementation follows the existing repository conventions for state sharing, route handling, and folder actions.
