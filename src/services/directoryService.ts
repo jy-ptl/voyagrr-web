@@ -33,6 +33,17 @@ export const directoryService = {
   },
 
   /**
+   * Retrieves the sample directory belonging to the authenticated user
+   */
+  async fetchSampleDirectory(): Promise<DirectoryItem> {
+    const response = await axiosInstance.get<DirectoryItem>("/api/directory/sample");
+    return {
+      ...response.data,
+      type: 'directory' as const
+    };
+  },
+
+  /**
    * Deletes a directory
    */
   async deleteDirectory(directoryId: string | number): Promise<void> {

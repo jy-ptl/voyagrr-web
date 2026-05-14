@@ -65,6 +65,7 @@ export const LoginPage = () => {
         token: data.access_token,
         refreshToken: data.refresh_token,
         user: idTokenData ? {
+          id: idTokenData.sub,
           username: idTokenData.preferred_username || idTokenData.sub,
           email: idTokenData.email || "",
           firstName: idTokenData.given_name || "",

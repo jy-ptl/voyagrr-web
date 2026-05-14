@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
-import { Folder, File, Search, MoreVertical, LayoutGrid, List as ListIcon, ChevronRight, Plus, FolderPlus, Pencil, Trash2, Info, Upload, Download, Share2, X } from "lucide-react";
+import { Folder, Search, MoreVertical, LayoutGrid, List as ListIcon, ChevronRight, Plus, FolderPlus, Pencil, Trash2, Info, Upload, Download, Loader2, Share2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,7 +20,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Progress } from "@/components/ui/progress";
 import { MetadataDialog } from "@/components/drive/MetadataDialog";
+import { FileThumbnail } from "@/components/drive/FileThumbnail";
 import {
   Form,
   FormControl,
@@ -56,7 +58,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { directoryService } from "@/services/directoryService";
 import { storageService } from "@/services/storageService";
 import { metadataService } from "@/services/metadataService";
-import type { DirectoryItem } from "@/types/drive";
+import type { DirectoryItem, FileMetadata } from "@/types/drive";
+
 import { useDriveBreadcrumbs } from "@/components/layout/DriveBreadcrumbContext";
 
 const folderSchema = z.object({
@@ -93,8 +96,9 @@ export const MyDrivePage = () => {
   
   // Selection & Info State
   const [itemToDelete, setItemToDelete] = useState<DirectoryItem | null>(null);
-  const [itemInfo, setItemInfo] = useState<{ item: DirectoryItem, metadata: Record<string, unknown> } | null>(null);
-  const [metadataMap, setMetadataMap] = useState<Record<string | number, unknown>>({});
+  const [itemInfo, setItemInfo] = useState<{ item: DirectoryItem, metadata: FileMetadata } | null>(null);
+  const [metadataMap, setMetadataMap] = useState<Record<string | number, FileMetadata>>({});
+  const [uploadProgress, setUploadProgress] = useState<{ fileName: string, progress: number } | null>(null);
   
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -150,9 +154,9 @@ export const MyDrivePage = () => {
         // Batch Fetch Metadata
         try {
           const metaResponses = await metadataService.getDirectoryMetadata(folderId);
-          const newMap: Record<string | number, unknown> = {};
+          const newMap: Record<string | number, FileMetadata> = {};
           metaResponses.forEach((m) => {
-            newMap[m.fileId] = m.metadata;
+            newMap[m.fileId] = m.metadata as FileMetadata;
           });
           setMetadataMap(newMap);
         } catch (mErr) {
@@ -237,11 +241,14 @@ export const MyDrivePage = () => {
   };
 
   const onFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const selectedFiles = e.target.files;
+    if (!selectedFiles || selectedFiles.length === 0) return;
 
-    if (file.size > MAX_FILE_SIZE) {
-      setError("File too large (max 10MB)");
+    const filesArray = Array.from(selectedFiles);
+    const oversizedFiles = filesArray.filter(file => file.size > MAX_FILE_SIZE);
+
+    if (oversizedFiles.length > 0) {
+      setError(`Some files are too large (max 10MB): ${oversizedFiles.map(f => f.name).join(", ")}`);
       return;
     }
 
@@ -285,6 +292,7 @@ export const MyDrivePage = () => {
       emitDriveRefresh();
       setRenameTarget(null);
     } finally {
+      setUploadProgress(null);
       setRenameLoading(false);
     }
   };
@@ -909,7 +917,7 @@ export const MyDrivePage = () => {
         >
           <Plus className="h-8 w-8" strokeWidth={2.5} />
         </Button>
-        <input type="file" ref={fileInputRef} className="hidden" onChange={onFileUpload} />
+        <input type="file" ref={fileInputRef} className="hidden" multiple onChange={onFileUpload} />
       </div>
 
       {/* Modals & Dialogs */}
@@ -1036,6 +1044,34 @@ export const MyDrivePage = () => {
           <Info className="h-4 w-4" />
           <span className="text-xs font-bold">{error}</span>
           <Button variant="ghost" size="sm" onClick={() => setError(null)} className="h-6 w-6 p-0 hover:bg-white/10 rounded-full ml-2">×</Button>
+        </motion.div>
+      )}
+
+      {uploadProgress && (
+        <motion.div 
+          initial={{ opacity: 0, y: -20, scale: 0.95 }} 
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -20, scale: 0.95 }}
+          className="fixed !top-4 !right-4 !left-4 sm:!left-auto sm:!w-80 bg-[#0a0810]/95 backdrop-blur-2xl border border-white/10 p-4 rounded-2xl shadow-2xl z-[9999]"
+        >
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3 overflow-hidden">
+                <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                  <Loader2 className="h-4 w-4 text-primary animate-spin" />
+                </div>
+                <div className="flex flex-col overflow-hidden">
+                  <span className="text-[10px] font-bold text-white truncate">
+                    Uploading {uploadProgress.fileName}
+                  </span>
+                  <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">
+                    {uploadProgress.progress}% complete
+                  </span>
+                </div>
+              </div>
+            </div>
+            <Progress value={uploadProgress.progress} className="h-1" />
+          </div>
         </motion.div>
       )}
     </div>

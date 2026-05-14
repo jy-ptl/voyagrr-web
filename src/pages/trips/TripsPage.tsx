@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import { Plus, Map, Globe, Search, ArrowRight, Users } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Plus, Map, Globe, Search, ArrowRight, Users, Sparkles, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -47,13 +49,14 @@ const tripSchema = z.object({
   visibility: z.enum(["PRIVATE", "SHARED"]),
   status: z.enum(["PLANNED", "ONGOING", "COMPLETED"]),
   groupId: z.number().optional(),
-  keycloakUserIds: z.array(z.string()).default([]),
+  keycloakUserIds: z.array(z.string()),
 });
 
 type TripValues = z.infer<typeof tripSchema>;
 
 const TripsPage = () => {
   const [trips, setTrips] = useState<Trip[]>([]);
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
@@ -68,6 +71,9 @@ const TripsPage = () => {
   const [groupSearch, setGroupSearch] = useState("");
   const [groupResults, setGroupResults] = useState<Group[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
+
+  // Analysis State
+  const [analyzingTrips, setAnalyzingTrips] = useState<Record<number, boolean>>({});
 
   const form = useForm<TripValues>({
     resolver: zodResolver(tripSchema),
@@ -164,6 +170,24 @@ const TripsPage = () => {
     }
   };
 
+  const handleAnalyzeTrip = async (e: React.MouseEvent, tripId: number) => {
+    e.stopPropagation();
+    if (analyzingTrips[tripId]) return;
+
+    setAnalyzingTrips(prev => ({ ...prev, [tripId]: true }));
+    try {
+      await tripService.analyzeTrip(tripId);
+      // In a real app, we might poll for status or show a toast
+    } catch (error) {
+      console.error("Analysis failed", error);
+    } finally {
+      // Keep loading state for a bit to give feedback
+      setTimeout(() => {
+        setAnalyzingTrips(prev => ({ ...prev, [tripId]: false }));
+      }, 2000);
+    }
+  };
+
   const filteredTrips = useMemo(() => trips.filter(trip => 
     trip.title.toLowerCase().includes(searchQuery.toLowerCase())
   ), [trips, searchQuery]);
@@ -222,7 +246,8 @@ const TripsPage = () => {
           {filteredTrips.map((trip) => (
             <Card 
               key={trip.id} 
-              className="group relative overflow-hidden bg-white/5 border-white/10 hover:border-primary/50 transition-all duration-300 rounded-2xl"
+              onClick={() => navigate(`/trips/${trip.id}`)}
+              className="group relative overflow-hidden bg-white/5 border-white/10 hover:border-primary/50 transition-all duration-300 rounded-2xl cursor-pointer"
             >
               <div className="aspect-video w-full bg-zinc-900 overflow-hidden relative">
                 <div className="absolute inset-0 bg-gradient-to-t from-[#0a0810] to-transparent z-10" />
@@ -240,9 +265,28 @@ const TripsPage = () => {
                       {trip.visibility}
                     </span>
                   </div>
-                  <Button variant="ghost" size="sm" className="h-8 w-8 rounded-lg hover:bg-white/10">
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className={cn(
+                        "h-8 px-2 rounded-lg hover:bg-primary/20 hover:text-primary transition-all gap-1.5 text-[9px] font-black uppercase tracking-widest",
+                        analyzingTrips[trip.id] && "text-primary bg-primary/10"
+                      )}
+                      onClick={(e) => handleAnalyzeTrip(e, trip.id)}
+                      disabled={analyzingTrips[trip.id]}
+                    >
+                      {analyzingTrips[trip.id] ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-3 w-3" />
+                      )}
+                      {analyzingTrips[trip.id] ? "Analyzing" : "Analyze"}
+                    </Button>
+                    <Button variant="ghost" size="sm" className="h-8 w-8 rounded-lg hover:bg-white/10" onClick={(e) => { e.stopPropagation(); navigate(`/trips/${trip.id}`); }}>
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
               </div>
             </Card>

@@ -16,5 +16,23 @@ export const userService = {
     if (!query) return [];
     const response = await axiosInstance.get<UserSearchResponse[]>(`/api/user/search?query=${encodeURIComponent(query)}`);
     return response.data;
+  },
+
+  /**
+   * Gets a user by their Keycloak ID
+   */
+  async getUserById(userId: string): Promise<UserSearchResponse> {
+    const response = await axiosInstance.get<UserSearchResponse>(`/api/user/${userId}`);
+    return response.data;
+  },
+
+  /**
+   * Gets multiple users by their Keycloak IDs
+   */
+  async getUsersInfoBatch(userIds: string[]): Promise<UserSearchResponse[]> {
+    if (!userIds || userIds.length === 0) return [];
+    const response = await axiosInstance.post<UserSearchResponse[]>(`/api/user/info/batch`, userIds);
+    return response.data;
   }
 };
+
