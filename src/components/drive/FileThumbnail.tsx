@@ -23,16 +23,23 @@ export const FileThumbnail = ({ fileId, type, className, iconClassName }: FileTh
     let isMounted = true;
 
     if (type === 'file') {
-      // 1. Check cache first
-      if (thumbnailCache.has(fileId)) {
-        setThumbnailUrl(thumbnailCache.get(fileId)!);
-        setLoading(false);
-        return;
+      const cachedUrl = thumbnailCache.get(fileId) ?? null;
+
+      if (cachedUrl) {
+        queueMicrotask(() => {
+          if (!isMounted) return;
+          setThumbnailUrl(cachedUrl);
+          setLoading(false);
+          setError(false);
+        });
+
+        return () => {
+          isMounted = false;
+        };
       }
 
       const fetchThumbnail = async () => {
         try {
-          // 2. Check if a request is already in progress
           let request = pendingRequests.get(fileId);
           
           if (!request) {
@@ -56,8 +63,6 @@ export const FileThumbnail = ({ fileId, type, className, iconClassName }: FileTh
         } finally {
           if (isMounted) {
             setLoading(false);
-            // Only the original requester cleans up the pending map
-            // but since we await the same promise, we just need to ensure the map is cleared eventually
             pendingRequests.delete(fileId);
           }
         }
