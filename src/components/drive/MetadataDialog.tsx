@@ -1,12 +1,13 @@
 import React, { useState } from "react";
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle 
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Folder, File, ChevronDown, ChevronUp } from "lucide-react";
 
 interface MetadataDialogProps {
   isOpen: boolean;
@@ -52,86 +53,55 @@ export const MetadataDialog = ({ isOpen, onClose, item, metadata }: MetadataDial
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[480px] bg-[#0a0810]/95 backdrop-blur-3xl border-white/10 text-white rounded-[2.5rem] p-0 shadow-2xl border-t-white/10">
-        <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-primary/5 to-transparent pointer-events-none" />
-        
-        <DialogHeader className="p-6 pb-2 relative z-10">
-          <div className="flex flex-col items-center text-center space-y-3">
-            <div className="h-12 w-12 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center shadow-lg relative overflow-hidden">
-              {item.type === 'directory' ? 
-                <Folder className="h-5 w-5 text-zinc-400" strokeWidth={1.5} /> : 
-                <File className="h-5 w-5 text-zinc-400" strokeWidth={1.5} />
-              }
+      <DialogContent className="sm:max-w-[420px]">
+        <DialogHeader>
+          <DialogTitle className="truncate">{item.name}</DialogTitle>
+          <DialogDescription>
+            {item.type === "directory" ? "Folder details" : metadata?.file?.mime || "File details"}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-xl border border-border bg-muted/40 p-3">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Type</p>
+              <p className="mt-1 text-sm font-medium">{item.type === "directory" ? "Folder" : "File"}</p>
             </div>
-            <div className="space-y-0.5 px-4">
-              <DialogTitle className="text-lg font-bold tracking-tight text-white truncate max-w-[280px]">
-                {item.name}
-              </DialogTitle>
-              <p className="text-[9px] font-black uppercase tracking-[0.15em] text-zinc-600">
-                {item.type === 'directory' ? 'Collection' : metadata?.file?.mime || 'Binary File'}
-              </p>
+            <div className="rounded-xl border border-border bg-muted/40 p-3">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Size</p>
+              <p className="mt-1 text-sm font-medium">{fileSize}</p>
             </div>
           </div>
-        </DialogHeader>
-        
-        <div className="p-6 pt-2 space-y-5 relative z-10 max-h-[55vh] overflow-y-auto custom-scrollbar">
-          {/* AI Intelligence Bento */}
+
+          <div className="rounded-xl border border-border bg-muted/40 p-3">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Resolution</p>
+            <p className="mt-1 text-sm font-medium">{resolution}</p>
+          </div>
+
           {metadata?.analysis?.scene && (
-            <div className="relative group overflow-hidden rounded-[1.5rem] bg-white/5 border border-white/5 p-6 transition-all hover:border-white/10">
-              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-500 mb-2">AI Prediction</p>
-              <div className="space-y-0.5">
-                <h3 className="text-2xl font-black text-white capitalize tracking-tighter">
-                  {metadata.analysis.scene}
-                </h3>
-                <div className="flex items-center gap-2">
-                  <span className="h-1 w-1 rounded-full bg-zinc-700" />
-                  <p className="text-[10px] font-bold text-zinc-600">Verified Intelligence</p>
-                </div>
-              </div>
+            <div className="rounded-xl border border-border bg-muted/40 p-3">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">AI Prediction</p>
+              <p className="mt-1 text-base font-semibold capitalize">{metadata.analysis.scene}</p>
             </div>
           )}
 
-          {/* Quick Metrics Grid */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-white/5 border border-white/5 rounded-xl p-4 space-y-0.5 transition-all">
-              <p className="text-[8px] font-black uppercase tracking-widest text-zinc-600">File Size</p>
-              <p className="text-base font-bold text-zinc-300">{fileSize}</p>
-            </div>
-            <div className="bg-white/5 border border-white/5 rounded-xl p-4 space-y-0.5 transition-all">
-              <p className="text-[8px] font-black uppercase tracking-widest text-zinc-600">Resolution</p>
-              <p className="text-base font-bold text-zinc-300">{resolution}</p>
-            </div>
-          </div>
-
-          {/* Expandable Semantic Tags */}
           {tags.length > 0 && (
-            <div className="space-y-2.5 px-1">
-              <div className="flex items-center justify-between">
-                <p className="text-[8px] font-black uppercase tracking-[0.15em] text-zinc-600">Key Identifiers</p>
-                <div className="h-px flex-1 bg-white/5 ml-3" />
-              </div>
-              <div className="flex flex-wrap gap-1.5 transition-all duration-500">
+            <div className="space-y-2">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Key Identifiers</p>
+              <div className="flex flex-wrap gap-2">
                 {visibleTags.map((t: { tag: string }, i: number) => (
-                  <span key={i} className="px-2.5 py-1 rounded-full bg-white/5 border border-white/5 text-zinc-400 text-[9px] font-bold uppercase tracking-tight hover:text-white hover:border-white/20 transition-all">
+                  <span key={i} className="rounded-full border border-border bg-muted/40 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-tight">
                     {t.tag}
                   </span>
                 ))}
                 {hasMoreTags && !showAllTags && (
-                  <button 
-                    onClick={() => setShowAllTags(true)}
-                    className="px-2.5 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-[9px] font-bold uppercase tracking-tight hover:bg-primary/20 transition-all flex items-center gap-1"
-                  >
-                    <span>+{tags.length - 4} More</span>
-                    <ChevronDown className="h-2.5 w-2.5" />
+                  <button onClick={() => setShowAllTags(true)} className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-tight text-primary">
+                    +{tags.length - 4} More
                   </button>
                 )}
                 {showAllTags && hasMoreTags && (
-                  <button 
-                    onClick={() => setShowAllTags(false)}
-                    className="px-2.5 py-1 rounded-full bg-white/5 border border-white/5 text-zinc-500 text-[9px] font-bold uppercase tracking-tight hover:text-white transition-all flex items-center gap-1"
-                  >
-                    <span>Show Less</span>
-                    <ChevronUp className="h-2.5 w-2.5" />
+                  <button onClick={() => setShowAllTags(false)} className="rounded-full border border-border bg-muted/40 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-tight text-muted-foreground">
+                    Show Less
                   </button>
                 )}
               </div>
@@ -139,14 +109,9 @@ export const MetadataDialog = ({ isOpen, onClose, item, metadata }: MetadataDial
           )}
         </div>
 
-        <div className="p-6 pt-0 flex gap-3 relative z-10">
-          <Button 
-            className="flex-1 h-12 bg-white text-black hover:bg-zinc-200 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all active:scale-95"
-            onClick={onClose}
-          >
-            Done
-          </Button>
-        </div>
+        <DialogFooter>
+          <Button onClick={onClose}>Done</Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
