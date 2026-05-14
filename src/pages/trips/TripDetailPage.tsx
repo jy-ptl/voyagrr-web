@@ -1,19 +1,22 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import axios from "axios";
 import { useParams, useNavigate } from "react-router-dom";
 import { format, parseISO, isValid } from "date-fns";
 import { 
-  ArrowLeft, MapPin, Search, Play, Loader2, Sparkles, X, Smile, Users, Heart, Image as ImageIcon, Upload
+  ArrowLeft, MapPin, Search, Play, Loader2, Sparkles, X, Smile, Users, Heart, Image as ImageIcon, Upload, Plus, Info
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 
 // Services & Types
 import { tripService } from "@/services/tripService";
 import { directoryService } from "@/services/directoryService";
 import { metadataService } from "@/services/metadataService";
+import { storageService } from "@/services/storageService";
 import { FileThumbnail } from "@/components/drive/FileThumbnail";
 import type { Trip } from "@/types/trips";
 import type { DirectoryItem, FileMetadata } from "@/types/drive";
@@ -76,6 +79,37 @@ const hasPositiveEmotion = (meta: FileMetadata | undefined): boolean => {
   return emotions.some(e => ['happy', 'joy', 'amazed', 'excited', 'love'].includes(e));
 };
 
+const FullQualityImage = ({ fileId, className }: { fileId: string | number, className?: string }) => {
+  const [url, setUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    let isMounted = true;
+    
+    storageService.downloadFile(fileId).then(blob => {
+      if (isMounted) {
+        objectUrl = URL.createObjectURL(blob);
+        setUrl(objectUrl);
+      }
+    }).catch(err => console.error("Failed to fetch full image", err));
+
+    return () => {
+      isMounted = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [fileId]);
+
+  if (!url) {
+    return (
+      <div className={cn("bg-black flex items-center justify-center", className)}>
+        <Loader2 className="h-8 w-8 text-white/20 animate-spin" />
+      </div>
+    );
+  }
+  
+  return <img src={url} alt="Full quality" className={cn("h-full w-full object-contain", className)} />;
+};
+
 export const TripDetailPage = () => {
   const { tripId } = useParams<{ tripId: string }>();
   const navigate = useNavigate();
@@ -86,6 +120,12 @@ export const TripDetailPage = () => {
   const [metadataMap, setMetadataMap] = useState<Record<string | number, FileMetadata>>({});
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
+  
+  // Upload & FAB State
+  const [isFabOpen, setIsFabOpen] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ fileName: string, progress: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Filter State
   const [searchQuery, setSearchQuery] = useState("");
@@ -148,6 +188,43 @@ export const TripDetailPage = () => {
       }, 2000);
     } catch (err) {
       setAnalyzing(false);
+    }
+  };
+
+  const onFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = e.target.files;
+    if (!selectedFiles || selectedFiles.length === 0) return;
+
+    const filesArray = Array.from(selectedFiles);
+    const oversizedFiles = filesArray.filter(file => file.size > 10 * 1024 * 1024);
+
+    if (oversizedFiles.length > 0) {
+      setError(`Some files are too large (max 10MB): ${oversizedFiles.map(f => f.name).join(", ")}`);
+      return;
+    }
+
+    try {
+      const onProgress = (percent: number) => {
+        setUploadProgress({ 
+          fileName: filesArray.length === 1 ? filesArray[0].name : `${filesArray.length} files`, 
+          progress: percent 
+        });
+      };
+
+      if (filesArray.length === 1) {
+        await storageService.uploadFile(filesArray[0], trip?.directoryId ?? null, onProgress);
+      } else {
+        await storageService.uploadFilesBatch(filesArray, trip?.directoryId ?? null, onProgress);
+      }
+      setIsFabOpen(false);
+      fetchData();
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        setError(err.response?.data?.message || "Upload failed");
+      }
+    } finally {
+      setUploadProgress(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
@@ -292,31 +369,24 @@ export const TripDetailPage = () => {
             <h1 className="text-lg font-bold text-white tracking-tight">{trip?.title}</h1>
           </div>
           
-          <div className="flex items-center gap-3">
-            <Button 
-              variant="outline"
-              className="border-white/10 bg-white/5 hover:bg-white/10 h-10 px-4 rounded-xl text-xs text-white"
-            >
-              <Upload className="h-4 w-4 mr-2" />
-              Upload Image
-            </Button>
+          <div className="flex items-center gap-2 sm:gap-3">
             <Button 
               onClick={handleAnalyze}
               disabled={analyzing}
               variant="outline"
-              className="border-white/10 bg-white/5 hover:bg-white/10 h-10 px-4 rounded-xl text-xs text-white"
+              className="border-white/10 bg-white/5 hover:bg-white/10 h-10 px-3 sm:px-4 rounded-xl text-xs text-white"
             >
-              {analyzing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
-              {analyzing ? "Analyzing..." : "Analyze"}
+              {analyzing ? <Loader2 className="h-4 w-4 sm:mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 sm:mr-2" />}
+              <span className="hidden sm:inline">{analyzing ? "Analyzing..." : "Analyze"}</span>
             </Button>
             
             {reelItems.length > 0 && (
               <Button 
                 onClick={() => setIsReelOpen(true)}
-                className="bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20 h-10 px-5 rounded-xl text-xs font-bold transition-all hover:scale-105 active:scale-95"
+                className="bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20 h-10 px-3 sm:px-5 rounded-xl text-xs font-bold transition-all hover:scale-105 active:scale-95"
               >
-                <Play className="h-4 w-4 mr-2 fill-white" />
-                Play Reel
+                <Play className="h-4 w-4 sm:mr-2 fill-white" />
+                <span className="hidden sm:inline">Play Reel</span>
               </Button>
             )}
           </div>
@@ -373,7 +443,7 @@ export const TripDetailPage = () => {
         </div>
 
         {/* Map Overlay info */}
-        <div className="absolute bottom-4 left-4 right-4 sm:left-auto sm:right-8 bg-[#0a0810]/90 backdrop-blur-md px-6 py-4 rounded-2xl shadow-xl border border-white/10 sm:max-w-xs pointer-events-none">
+        <div className="absolute bottom-4 left-4 right-4 sm:left-auto sm:right-8 bg-[#0a0810]/90 backdrop-blur-md px-4 py-3 sm:px-6 sm:py-4 rounded-2xl shadow-xl border border-white/10 sm:max-w-xs pointer-events-none">
           <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-1">Trip Overview</p>
           <h2 className="text-xl font-bold text-white leading-tight mb-2">{trip?.title}</h2>
           <p className="text-xs text-zinc-400 font-medium">
@@ -384,14 +454,14 @@ export const TripDetailPage = () => {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 space-y-12">
         {/* Smart Filters Bar */}
-        <div className="bg-[#0a0810] rounded-3xl p-6 shadow-sm border border-white/10 sticky top-20 z-30 flex flex-col sm:flex-row sm:items-center gap-6 justify-between">
-          <div className="flex flex-wrap items-center gap-4">
+        <div className="bg-[#0a0810] rounded-3xl p-4 sm:p-6 shadow-sm border border-white/10 sticky top-20 z-30 flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6 justify-between">
+          <div className="flex flex-nowrap sm:flex-wrap items-center gap-3 sm:gap-4 overflow-x-auto pb-2 sm:pb-0 scrollbar-none w-full sm:w-auto">
             {/* Emotion Filter */}
             <Button
               onClick={() => setShowHappyMoments(!showHappyMoments)}
               variant={showHappyMoments ? "default" : "outline"}
               className={cn(
-                "rounded-xl transition-all font-bold text-xs h-10 shadow-sm",
+                "rounded-xl transition-all font-bold text-xs h-10 shadow-sm shrink-0",
                 showHappyMoments ? "bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 border-amber-500/30" : "bg-white/5 border-white/10 text-zinc-400 hover:bg-white/10 hover:text-white"
               )}
             >
@@ -401,7 +471,7 @@ export const TripDetailPage = () => {
 
             {/* People Filter */}
             {allPeople.length > 0 && (
-              <div className="flex items-center bg-white/5 p-1 rounded-xl border border-white/10">
+              <div className="flex items-center bg-white/5 p-1 rounded-xl border border-white/10 shrink-0">
                 <Button
                   variant="ghost"
                   size="sm"
@@ -436,16 +506,16 @@ export const TripDetailPage = () => {
             )}
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 sm:gap-4 w-full sm:w-auto overflow-x-auto pb-2 sm:pb-0 scrollbar-none justify-between sm:justify-end">
             {/* Scene Tabs */}
             {allScenes.length > 1 && (
-              <div className="hidden md:flex bg-white/5 p-1 rounded-xl border border-white/10">
+              <div className="flex bg-white/5 p-1 rounded-xl border border-white/10 shrink-0">
                 {allScenes.slice(0, 4).map(scene => (
                   <button
                     key={scene}
                     onClick={() => setSelectedScene(scene)}
                     className={cn(
-                      "px-4 py-1.5 rounded-lg text-xs font-bold transition-all",
+                      "px-4 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap",
                       selectedScene === scene ? "bg-white/10 text-white shadow-sm" : "text-zinc-500 hover:text-white"
                     )}
                   >
@@ -456,7 +526,7 @@ export const TripDetailPage = () => {
             )}
 
             {/* Search */}
-            <div className="relative group">
+            <div className="relative group shrink-0 sm:shrink">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 group-focus-within:text-primary transition-colors" />
               <Input
                 placeholder="Search..."
@@ -585,9 +655,8 @@ export const TripDetailPage = () => {
                   transition={{ duration: 0.7, ease: "easeInOut" }}
                   className="absolute inset-0 rounded-3xl overflow-hidden shadow-2xl bg-black"
                 >
-                  <FileThumbnail 
+                  <FullQualityImage 
                     fileId={reelItems[reelIndex].id} 
-                    type="file" 
                     className="w-full h-full !rounded-none object-contain" 
                   />
                   
@@ -644,6 +713,79 @@ export const TripDetailPage = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* FAB & Upload Progress */}
+      <div className="fixed bottom-8 right-8 flex flex-col items-end gap-4 z-50">
+        <AnimatePresence>
+          {isFabOpen && (
+            <motion.div 
+              initial={{ opacity: 0, y: 20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.95 }}
+              className="flex flex-col items-end gap-3 mb-2"
+            >
+              <div className="group relative flex items-center gap-3">
+                <span className="opacity-0 group-hover:opacity-100 transition-all absolute right-16 whitespace-nowrap rounded-xl bg-white/5 px-4 py-2 text-xs font-bold text-white backdrop-blur-xl border border-white/10 shadow-2xl translate-x-2 group-hover:translate-x-0">
+                  Upload Image
+                </span>
+                <Button 
+                  size="icon" 
+                  className="h-14 w-14 rounded-2xl bg-white/5 border border-white/10 text-primary hover:bg-white/10 hover:border-primary/50 shadow-2xl transition-all hover:scale-110 active:scale-95"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload className="h-6 w-6" />
+                </Button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        <Button 
+          className={cn(
+            "h-16 w-16 rounded-[1.5rem] bg-primary hover:bg-primary/90 text-white shadow-[0_20px_50px_rgba(170,59,255,0.4)] transition-all duration-500 hover:scale-110 active:scale-95",
+            isFabOpen && "rotate-[135deg] bg-zinc-800 shadow-none"
+          )}
+          onClick={() => setIsFabOpen(!isFabOpen)}
+        >
+          <Plus className="h-8 w-8" strokeWidth={2.5} />
+        </Button>
+        <input type="file" accept="image/*" ref={fileInputRef} className="hidden" multiple onChange={onFileUpload} />
+      </div>
+
+      {error && (
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-destructive/90 backdrop-blur-xl border border-white/10 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 z-[100]">
+          <Info className="h-4 w-4" />
+          <span className="text-xs font-bold">{error}</span>
+          <Button variant="ghost" size="sm" onClick={() => setError(null)} className="h-6 w-6 p-0 hover:bg-white/10 rounded-full ml-2">×</Button>
+        </motion.div>
+      )}
+
+      {uploadProgress && (
+        <motion.div 
+          initial={{ opacity: 0, y: -20, scale: 0.95 }} 
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -20, scale: 0.95 }}
+          className="fixed !top-4 !right-4 !left-4 sm:!left-auto sm:!w-80 bg-[#0a0810]/95 backdrop-blur-2xl border border-white/10 p-4 rounded-2xl shadow-2xl z-[9999]"
+        >
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3 overflow-hidden">
+                <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                  <Loader2 className="h-4 w-4 text-primary animate-spin" />
+                </div>
+                <div className="flex flex-col overflow-hidden">
+                  <span className="text-[10px] font-bold text-white truncate">
+                    Uploading {uploadProgress.fileName}
+                  </span>
+                  <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">
+                    {uploadProgress.progress}% complete
+                  </span>
+                </div>
+              </div>
+            </div>
+            <Progress value={uploadProgress.progress} className="h-1" />
+          </div>
+        </motion.div>
+      )}
     </div>
   );
 };
