@@ -24,17 +24,17 @@ export const Navbar = ({ onMenuClick }: NavbarProps) => {
   const navigate = useNavigate();
 
   return (
-    <nav className="sticky top-0 z-40 flex h-16 w-full items-center justify-between border-b border-white/5 bg-[#0a0810]/60 px-4 lg:px-6 backdrop-blur-md">
-      <div className="flex items-center gap-4 lg:w-1/3">
+    <nav className="sticky top-0 z-40 flex h-16 w-full items-center justify-between border-b border-white/5 bg-[#0a0810]/70 px-4 backdrop-blur-xl lg:px-8">
+      <div className="flex min-w-0 flex-1 items-center gap-4">
         <Button variant="ghost" size="icon" className="lg:hidden" onClick={onMenuClick}>
           <Menu className="h-5 w-5 text-muted-foreground" />
         </Button>
         
-        <div className="relative hidden w-full max-w-sm sm:block">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+        <div className="relative hidden w-full max-w-lg sm:block">
+          <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
           <Input
-            placeholder="Search trips..."
-            className="w-full bg-white/5 border-white/10 pl-10 focus-visible:ring-primary/50 text-sm h-9"
+            placeholder="Search..."
+            className="h-11 w-full rounded-xl border-white/10 bg-white/[0.04] pl-11 text-sm text-white placeholder:text-zinc-500 transition-all focus-visible:border-primary/50 focus-visible:ring-primary/20"
           />
         </div>
       </div>

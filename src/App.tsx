@@ -24,6 +24,15 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 };
 
 function App() {
+  React.useEffect(() => {
+    const preventNativeContextMenu = (event: MouseEvent) => {
+      event.preventDefault();
+    };
+
+    document.addEventListener("contextmenu", preventNativeContextMenu);
+    return () => document.removeEventListener("contextmenu", preventNativeContextMenu);
+  }, []);
+
   return (
     <BrowserRouter>
       <Routes>
