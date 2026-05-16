@@ -69,14 +69,6 @@ export const Navbar = ({ onMenuClick }: NavbarProps) => {
           <Menu className="h-5 w-5 text-muted-foreground" />
         </Button>
 
-        <div className="hidden items-center gap-3 lg:flex">
-          <img src="/favicon.svg" alt="VOYAGRR" className="h-8 w-8 drop-shadow-[0_0_18px_rgba(134,59,255,0.45)]" />
-          <div className="leading-none">
-            <p className="text-sm font-black tracking-[0.35em] text-white">VOYAGRR</p>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-zinc-500">Travel workspace</p>
-          </div>
-        </div>
-        
         <div className="relative hidden w-full max-w-lg sm:block">
           <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
           <Input
