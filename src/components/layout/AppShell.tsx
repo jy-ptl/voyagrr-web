@@ -2,7 +2,7 @@ import React from "react";
 import { Sidebar } from "./Sidebar";
 import { Navbar } from "./Navbar";
 import { motion, AnimatePresence } from "framer-motion";
-import { DriveBreadcrumbProvider } from "./DriveBreadcrumbContext";
+import { DriveBreadcrumbProvider } from "./DriveBreadcrumbProvider";
 
 interface AppShellProps {
   children: React.ReactNode;

@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Folder,
-  File as FileIcon,
   Search,
   MoreVertical,
   LayoutGrid,
@@ -20,6 +19,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { MetadataDialog } from "@/components/drive/MetadataDialog";
+import { FileThumbnail } from "@/components/drive/FileThumbnail";
 import {
   Form,
   FormControl,
@@ -86,6 +87,18 @@ const folderSchema = z.object({
 type FolderValues = z.infer<typeof folderSchema>;
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
+const isAuthError = (error: unknown) =>
+  axios.isAxiosError(error) &&
+  (error.response?.status === 401 || error.response?.status === 403);
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (axios.isAxiosError(error)) {
+    return error.response?.data?.message || fallback;
+  }
+
+  return fallback;
+};
 
 export const MyDrivePage = () => {
   const dispatch = useDispatch();
@@ -218,7 +231,12 @@ export const MyDrivePage = () => {
         }
       } catch (err) {
         console.error("Failed to fetch directory:", err);
-        handleLogout();
+        if (isAuthError(err)) {
+          handleLogout();
+          return;
+        }
+
+        setError(getErrorMessage(err, "Failed to load this folder"));
       } finally {
         setLoading(false);
       }
@@ -226,6 +244,14 @@ export const MyDrivePage = () => {
     [handleLogout, setChildDirectories, setChildDirectoriesFolderId],
   );
 
+  const MEDIA_FILE_ACCEPT = "image/*,video/*";
+
+  const isMediaFile = (file: File) =>
+    file.type.startsWith("image/") ||
+    file.type.startsWith("video/") ||
+    /\.(png|jpe?g|gif|webp|avif|heic|heif|bmp|svg|mp4|mov|webm|mkv|avi|m4v|3gp)$/i.test(
+      file.name,
+    );
   const uploadFiles = useCallback(
     async (files: File[], directoryId: string | number | null) => {
       if (!files.length || directoryId === null) return;
@@ -233,9 +259,7 @@ export const MyDrivePage = () => {
       setUploadingFiles(true);
       setError(null);
       try {
-        await Promise.all(
-          files.map((file) => storageService.uploadFile(file, directoryId)),
-        );
+        await storageService.uploadFilesBatch(files, directoryId);
         setIsFabOpen(false);
         fetchData(directoryId);
         emitDriveRefresh();
@@ -268,6 +292,31 @@ export const MyDrivePage = () => {
     return () =>
       window.removeEventListener("voyagrr:drive-refresh", handleRefresh);
   }, [currentFolderId, fetchData]);
+
+  useEffect(() => {
+    const handleRename = (event: Event) => {
+      const customEvent = event as CustomEvent<{
+        id: string | number;
+        name: string;
+      }>;
+      const { id, name } = customEvent.detail;
+      if (id === undefined || !name) return;
+
+      setItems((prev) =>
+        prev.map((item) => (item.id === id ? { ...item, name } : item)),
+      );
+      setChildDirectories((prev) =>
+        prev.map((item) => (item.id === id ? { ...item, name } : item)),
+      );
+      setBreadcrumbs((prev) =>
+        prev.map((crumb) => (crumb.id === id ? { ...crumb, name } : crumb)),
+      );
+    };
+
+    window.addEventListener("voyagrr:drive-rename", handleRename);
+    return () =>
+      window.removeEventListener("voyagrr:drive-rename", handleRename);
+  }, [setBreadcrumbs, setChildDirectories]);
 
   const navigateTo = (index: number) => {
     setBreadcrumbs((prev) => prev.slice(0, index + 1));
@@ -307,6 +356,13 @@ export const MyDrivePage = () => {
     if (!selectedFiles || selectedFiles.length === 0) return;
 
     const filesArray = Array.from(selectedFiles);
+    const unsupportedFiles = filesArray.filter((file) => !isMediaFile(file));
+    if (unsupportedFiles.length > 0) {
+      setError("Only image and video files are supported for upload.");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
     const oversizedFiles = filesArray.filter(
       (file) => file.size > MAX_FILE_SIZE,
     );
@@ -374,7 +430,11 @@ export const MyDrivePage = () => {
           ),
         );
       }
-      emitDriveRefresh();
+      window.dispatchEvent(
+        new CustomEvent("voyagrr:drive-rename", {
+          detail: { id: renameTarget.id, name: nextName },
+        }),
+      );
       setRenameTarget(null);
     } finally {
       setUploadProgress(null);
@@ -404,6 +464,12 @@ export const MyDrivePage = () => {
       const files = Array.from(event.dataTransfer.files || []);
       if (files.length === 0) return;
 
+      const unsupportedFiles = files.filter((file) => !isMediaFile(file));
+      if (unsupportedFiles.length > 0) {
+        setError("Only image and video files are supported for upload.");
+        return;
+      }
+
       await uploadFiles(files, currentFolderId);
     },
     [canUpload, currentFolderId, uploadFiles],
@@ -424,10 +490,17 @@ export const MyDrivePage = () => {
       setItemToDelete(null);
       if (isDeletingCurrentDirectory) {
         setBreadcrumbs((prev) => prev.slice(0, -1));
-        fetchData(parentFolderId);
+        void fetchData(parentFolderId);
       } else {
-        fetchData(currentFolderId);
+        setItems((prev) => prev.filter((item) => item.id !== itemToDelete.id));
+        if (itemToDelete.type === "directory") {
+          setChildDirectories((prev) =>
+            prev.filter((item) => item.id !== itemToDelete.id),
+          );
+        }
+        void fetchData(currentFolderId);
       }
+      emitDriveRefresh();
     } catch {
       setError("Failed to delete item");
     } finally {
@@ -470,17 +543,17 @@ export const MyDrivePage = () => {
   );
 
   const actionMenuClassName =
-    "bg-[#0a0810]/98 backdrop-blur-xl border-white/10 text-white rounded-lg p-1 shadow-2xl animate-in zoom-in-95 duration-200";
+    "min-w-44 overflow-hidden rounded-xl border border-white/10 bg-[#0f0d16]/98 p-1.5 text-white shadow-[0_18px_55px_rgba(0,0,0,0.55)] backdrop-blur-2xl animate-in zoom-in-95 duration-150";
   const actionMenuItemClassName =
-    "rounded-md h-8 gap-2 focus:bg-white/5 cursor-pointer text-[10px] font-bold uppercase tracking-wider";
+    "h-9 rounded-lg gap-2.5 px-2.5 text-[10px] font-bold uppercase tracking-wider text-zinc-200 transition-colors cursor-pointer focus:bg-white/10 focus:text-white data-[highlighted]:bg-white/10 data-[highlighted]:text-white";
   const contextMenuClassName =
-    "w-64 overflow-hidden rounded-2xl border-white/10 bg-[#0a0810]/95 p-2 text-white shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-3xl animate-in fade-in-0 zoom-in-95 duration-150";
+    "w-56 overflow-hidden rounded-xl border border-white/10 bg-[#0f0d16]/98 p-1.5 text-white shadow-[0_20px_60px_rgba(0,0,0,0.55)] backdrop-blur-2xl animate-in fade-in-0 zoom-in-95 duration-150";
   const contextMenuItemClassName =
-    "h-10 rounded-xl gap-3 px-2.5 text-[11px] font-bold uppercase tracking-wider text-zinc-300 cursor-pointer transition-colors focus:bg-white/10 focus:text-white data-[highlighted]:bg-white/10 data-[highlighted]:text-white";
+    "h-9 rounded-lg gap-2.5 px-2 text-[10px] font-bold uppercase tracking-wider text-zinc-200 cursor-pointer transition-colors focus:bg-white/10 focus:text-white data-[highlighted]:bg-white/10 data-[highlighted]:text-white";
   const contextMenuIconClassName =
-    "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/5 text-zinc-400";
+    "flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white/10 text-zinc-100";
   const contextMenuDangerItemClassName =
-    "h-10 rounded-xl gap-3 px-2.5 text-[11px] font-bold uppercase tracking-wider text-destructive cursor-pointer transition-colors focus:bg-destructive/10 focus:text-destructive data-[highlighted]:bg-destructive/10 data-[highlighted]:text-destructive";
+    "h-9 rounded-lg gap-2.5 px-2 text-[10px] font-bold uppercase tracking-wider text-destructive cursor-pointer transition-colors focus:bg-destructive/10 focus:text-destructive data-[highlighted]:bg-destructive/10 data-[highlighted]:text-destructive";
 
   const renderActionMenuItems = (
     item: DirectoryItem,
@@ -541,7 +614,7 @@ export const MyDrivePage = () => {
           <span className={contextMenuIconClassName}>
             <Upload className="h-3.5 w-3.5" />
           </span>
-          <span>Upload File</span>
+          <span>Upload Media</span>
         </ContextMenuItem>
       )}
 
@@ -598,7 +671,7 @@ export const MyDrivePage = () => {
           setItemInfo({ item, metadata: meta || {} });
         }}
       >
-        <Info className="h-3 w-3 text-zinc-500" />
+        <Info className="h-3.5 w-3.5 text-white/85" />
         <span>Info</span>
       </DropdownMenuItem>
 
@@ -610,7 +683,7 @@ export const MyDrivePage = () => {
             void handleDownload(item);
           }}
         >
-          <Download className="h-3 w-3 text-zinc-500" />
+          <Download className="h-3.5 w-3.5 text-white/85" />
           <span>Download</span>
         </DropdownMenuItem>
       )}
@@ -623,7 +696,7 @@ export const MyDrivePage = () => {
             openCreateFolderModal(item.id);
           }}
         >
-          <FolderPlus className="h-3 w-3 text-zinc-500" />
+          <FolderPlus className="h-3.5 w-3.5 text-white/85" />
           <span>New Folder</span>
         </DropdownMenuItem>
       )}
@@ -636,8 +709,8 @@ export const MyDrivePage = () => {
             startUploadForFolder(item.id);
           }}
         >
-          <Upload className="h-3 w-3 text-zinc-500" />
-          <span>Upload File</span>
+          <Upload className="h-3.5 w-3.5 text-white/85" />
+          <span>Upload Media</span>
         </DropdownMenuItem>
       )}
 
@@ -648,7 +721,7 @@ export const MyDrivePage = () => {
           handleRename(item);
         }}
       >
-        <Pencil className="h-3 w-3 text-zinc-500" />
+        <Pencil className="h-3.5 w-3.5 text-white/85" />
         <span>Rename</span>
       </DropdownMenuItem>
 
@@ -659,7 +732,7 @@ export const MyDrivePage = () => {
           void handleShare(item);
         }}
       >
-        <Share2 className="h-3 w-3 text-zinc-500" />
+        <Share2 className="h-3.5 w-3.5 text-white/85" />
         <span>Share</span>
       </DropdownMenuItem>
 
@@ -670,7 +743,7 @@ export const MyDrivePage = () => {
           setItemToDelete(item);
         }}
       >
-        <Trash2 className="h-3 w-3" />
+        <Trash2 className="h-3.5 w-3.5 text-destructive" />
         <span>Delete</span>
       </DropdownMenuItem>
     </>
@@ -707,7 +780,7 @@ export const MyDrivePage = () => {
           <span className={contextMenuIconClassName}>
             <Upload className="h-3.5 w-3.5" />
           </span>
-          <span>Upload File</span>
+          <span>Upload Media</span>
         </ContextMenuItem>
       )}
 
@@ -948,69 +1021,103 @@ export const MyDrivePage = () => {
                               className={cn(
                                 "group relative border-white/5 bg-white/5 transition-all duration-300 hover:bg-white/10 cursor-pointer overflow-hidden rounded-xl shadow-sm hover:shadow-primary/5 hover:border-primary/20 flex",
                                 view === "grid"
-                                  ? "h-32 p-3 flex-col items-center justify-center text-center gap-3"
+                                  ? "h-44 p-0 flex-col items-stretch justify-start"
                                   : "p-2 px-3 items-center justify-between h-14",
                               )}
                             >
-                              <div
-                                className={cn(
-                                  "flex items-center gap-3 min-w-0",
-                                  view === "grid"
-                                    ? "flex-col w-full"
-                                    : "flex-row",
-                                )}
-                              >
-                                <div
-                                  className={cn(
-                                    "flex items-center justify-center rounded-lg transition-all duration-300 shrink-0",
-                                    view === "grid" ? "h-10 w-10" : "h-9 w-9",
-                                    item.type === "directory"
-                                      ? "bg-primary/10 text-primary group-hover:bg-primary/20"
-                                      : "bg-zinc-800 text-zinc-500 group-hover:bg-zinc-700 group-hover:text-white",
-                                  )}
-                                >
-                                  {item.type === "directory" ? (
-                                    <Folder
-                                      className="h-5 w-5"
-                                      strokeWidth={1.5}
-                                    />
-                                  ) : (
-                                    <FileIcon
-                                      className="h-5 w-5"
-                                      strokeWidth={1.5}
-                                    />
-                                  )}
-                                </div>
-                                <div className="overflow-hidden">
-                                  <p
-                                    className={cn(
-                                      "truncate text-[11px] font-bold text-white group-hover:text-primary transition-colors",
-                                      view === "grid"
-                                        ? "text-center"
-                                        : "text-left",
+                              {view === "grid" ? (
+                                <>
+                                  <div className="relative h-full w-full overflow-hidden bg-zinc-900/80">
+                                    {item.type === "directory" ? (
+                                      <div className="relative flex h-full w-full items-center justify-center bg-[linear-gradient(150deg,rgba(170,59,255,0.32),rgba(255,255,255,0.02))] text-primary">
+                                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.15),transparent_45%)]" />
+                                        <Folder
+                                          className="relative h-10 w-10"
+                                          strokeWidth={1.4}
+                                        />
+                                      </div>
+                                    ) : (
+                                      <FileThumbnail
+                                        fileId={item.id}
+                                        type={item.type}
+                                        className="h-full w-full !rounded-none border-0"
+                                        iconClassName="h-5 w-5"
+                                        fit="contain"
+                                      />
                                     )}
-                                  >
-                                    {item.name}
-                                  </p>
+                                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/30 to-transparent" />
+                                  </div>
+
+                                  <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex min-w-0 flex-col gap-2 px-3 pb-3">
+                                    <div className="overflow-hidden drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]">
+                                      <p className="truncate text-[1.08rem] font-semibold leading-5 text-white transition-colors group-hover:text-primary">
+                                        {item.name}
+                                      </p>
+                                      <p className="mt-1 text-[9px] font-black uppercase tracking-[0.18em] text-zinc-300/90">
+                                        {item.type}
+                                      </p>
+                                    </div>
+
+                                    <div className="flex min-h-6 items-center gap-2">
+                                      {item.type === "directory" ? (
+                                        <Badge className="pointer-events-auto bg-white/20 text-white hover:bg-white/25 text-[9px] font-black uppercase tracking-[0.14em] backdrop-blur-sm">
+                                          Directory
+                                        </Badge>
+                                      ) : meta?.analysis?.scene ? (
+                                        <Badge className="pointer-events-auto bg-primary/25 text-primary-foreground hover:bg-primary/35 text-[9px] font-black uppercase tracking-[0.14em] backdrop-blur-sm">
+                                          {meta.analysis.scene}
+                                        </Badge>
+                                      ) : (
+                                        <Badge className="pointer-events-auto bg-zinc-700/70 text-zinc-200 hover:bg-zinc-700/80 text-[9px] font-black uppercase tracking-[0.14em] backdrop-blur-sm">
+                                          Untagged
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  </div>
+                                </>
+                              ) : (
+                                <div className="flex min-w-0 items-center gap-3">
                                   <div
                                     className={cn(
-                                      "flex items-center gap-2 mt-0.5 opacity-60",
-                                      view === "grid"
-                                        ? "justify-center"
-                                        : "justify-start",
+                                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-all duration-300",
+                                      item.type === "directory"
+                                        ? "bg-primary/10 text-primary group-hover:bg-primary/20"
+                                        : "",
                                     )}
                                   >
-                                    <p className="text-[8px] text-zinc-600 font-black uppercase tracking-[0.2em]">
-                                      {item.type}
-                                    </p>
-                                    {meta?.analysis?.scene && (
-                                      <p className="text-[8px] text-primary font-black uppercase tracking-widest hidden sm:block">
-                                        • {meta.analysis.scene}
-                                      </p>
+                                    {item.type === "directory" ? (
+                                      <Folder
+                                        className="h-5 w-5"
+                                        strokeWidth={1.5}
+                                      />
+                                    ) : (
+                                      <FileThumbnail
+                                        fileId={item.id}
+                                        type={item.type}
+                                        className="h-9 w-9 rounded-lg border border-white/10"
+                                        iconClassName="h-4 w-4"
+                                        fit="contain"
+                                      />
                                     )}
                                   </div>
+
+                                  <div className="overflow-hidden">
+                                    <p className="truncate text-[11px] font-bold text-white transition-colors group-hover:text-primary">
+                                      {item.name}
+                                    </p>
+                                    <div className="mt-0.5 flex items-center gap-2 opacity-60">
+                                      <p className="text-[8px] font-black uppercase tracking-[0.2em] text-zinc-600">
+                                        {item.type}
+                                      </p>
+                                      {meta?.analysis?.scene && (
+                                        <p className="hidden text-[8px] font-black uppercase tracking-widest text-primary sm:block">
+                                          • {meta.analysis.scene}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
                                 </div>
-                              </div>
+                              )}
 
                               <div
                                 className={cn(
@@ -1025,9 +1132,9 @@ export const MyDrivePage = () => {
                                       variant="ghost"
                                       size="icon"
                                       className={cn(
-                                        "h-6 w-6 rounded-md text-zinc-600 transition-all hover:bg-white/5 hover:text-white",
+                                        "h-7 w-7 rounded-md text-zinc-200/90 transition-all hover:bg-white/20 hover:text-white",
                                         view === "grid"
-                                          ? "opacity-70 group-hover:opacity-100"
+                                          ? "bg-black/45 opacity-85"
                                           : "opacity-100",
                                       )}
                                       onClick={(e) => e.stopPropagation()}
@@ -1075,7 +1182,7 @@ export const MyDrivePage = () => {
               {canUpload && (
                 <div className="group relative flex items-center gap-3">
                   <span className="opacity-0 group-hover:opacity-100 transition-all absolute right-16 whitespace-nowrap rounded-xl bg-white/5 px-4 py-2 text-xs font-bold text-white backdrop-blur-xl border border-white/10 shadow-2xl translate-x-2 group-hover:translate-x-0">
-                    Upload File
+                    Upload Media
                   </span>
                   <Button
                     size="icon"
@@ -1116,6 +1223,7 @@ export const MyDrivePage = () => {
           type="file"
           ref={fileInputRef}
           className="hidden"
+          accept={MEDIA_FILE_ACCEPT}
           multiple
           onChange={onFileUpload}
         />

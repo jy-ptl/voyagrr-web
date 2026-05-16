@@ -1,7 +1,7 @@
 export interface DirectoryItem {
   id: number | string;
   name: string;
-  type: 'directory' | 'file';
+  type: "directory" | "file";
   permissions?: string[];
   mineType?: string; // Matching OpenAPI 'mineType'
 }
@@ -52,6 +52,7 @@ export interface FileMetadata {
         lastName: string;
         email: string;
         username: string;
+        avatarUrl?: string;
       } | null;
     }>;
     tripId?: number;
