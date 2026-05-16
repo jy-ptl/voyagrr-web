@@ -1,24 +1,49 @@
 import axiosInstance from "@/api/axiosInstance";
 import type { DirectoryItem, DirectoryContentResponse, DirectoryTreeResponse } from "@/types/drive";
 
+let rootRequest: Promise<DirectoryItem[]> | null = null;
+const contentRequests = new Map<string | number, Promise<DirectoryContentResponse>>();
+
 export const directoryService = {
   /**
    * Retrieves all directories belonging to the authenticated user (Root)
    */
   async fetchRoot(): Promise<DirectoryItem[]> {
-    const response = await axiosInstance.get<DirectoryTreeResponse[]>("/api/directory");
-    return response.data.map(item => ({
-      ...item,
-      type: 'directory' as const
-    }));
+    if (!rootRequest) {
+      rootRequest = axiosInstance
+        .get<DirectoryTreeResponse[]>("/api/directory")
+        .then((response) =>
+          response.data.map(item => ({
+            ...item,
+            type: 'directory' as const
+          })),
+        )
+        .finally(() => {
+          rootRequest = null;
+        });
+    }
+
+    return rootRequest;
   },
 
   /**
    * Retrieves the contents of a directory
    */
   async fetchContents(directoryId: string | number): Promise<DirectoryContentResponse> {
-    const response = await axiosInstance.get<DirectoryContentResponse>(`/api/directory/${directoryId}`);
-    return response.data;
+    const existingRequest = contentRequests.get(directoryId);
+    if (existingRequest) {
+      return existingRequest;
+    }
+
+    const request = axiosInstance
+      .get<DirectoryContentResponse>(`/api/directory/${directoryId}`)
+      .then((response) => response.data)
+      .finally(() => {
+        contentRequests.delete(directoryId);
+      });
+
+    contentRequests.set(directoryId, request);
+    return request;
   },
 
   /**

@@ -1,4 +1,20 @@
-import { Home, Map, Image as ImageIcon, Users, Heart, Clock, PlusCircle, X, HardDrive, ChevronDown, Folder, FolderPlus, Upload, Pencil, Trash2 } from "lucide-react";
+import {
+  Home,
+  Map,
+  Image as ImageIcon,
+  Users,
+  Heart,
+  Clock,
+  PlusCircle,
+  X,
+  HardDrive,
+  ChevronDown,
+  Folder,
+  FolderPlus,
+  Upload,
+  Pencil,
+  Trash2,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,8 +36,18 @@ import React from "react";
 import { useDriveBreadcrumbs } from "./DriveBreadcrumbContext";
 import { directoryService } from "@/services/directoryService";
 import { storageService } from "@/services/storageService";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { MetadataDialog } from "@/components/drive/MetadataDialog";
+import { useLocation, useNavigate } from "react-router-dom";
 
 const navItems = [
   { icon: HardDrive, label: "My Drive", href: "/my-drive" },
@@ -39,46 +65,96 @@ interface SidebarProps {
 }
 
 export const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
-  const pathname = window.location.pathname;
-  const { breadcrumbs, setBreadcrumbs, childDirectories, childDirectoriesFolderId } = useDriveBreadcrumbs();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const pathname = location.pathname;
+  const {
+    breadcrumbs,
+    setBreadcrumbs,
+    childDirectories,
+    childDirectoriesFolderId,
+  } = useDriveBreadcrumbs();
   const isDriveRoute = pathname.startsWith("/my-drive");
-  const [expandedBreadcrumbIds, setExpandedBreadcrumbIds] = React.useState<Set<string | number>>(new Set(["root"]));
+  const [expandedBreadcrumbIds, setExpandedBreadcrumbIds] = React.useState<
+    Set<string | number>
+  >(new Set(["root"]));
 
-  const [childrenByParent, setChildrenByParent] = React.useState<Record<string, { id: string | number | null; name: string }[]>>({});
-  const [hasChildrenById, setHasChildrenById] = React.useState<Record<string, boolean>>({});
-  const [loadingChildrenIds, setLoadingChildrenIds] = React.useState<Set<string>>(new Set());
-  
+  const [childrenByParent, setChildrenByParent] = React.useState<
+    Record<string, { id: string | number | null; name: string }[]>
+  >({});
+  const [hasChildrenById, setHasChildrenById] = React.useState<
+    Record<string, boolean>
+  >({});
+  const [, setLoadingChildrenIds] = React.useState<Set<string>>(new Set());
+  const probedChildrenIdsRef = React.useRef<Set<string>>(new Set());
+  const probingChildrenIdsRef = React.useRef<Set<string>>(new Set());
+
   // Context menu state
-  const [contextMenuFolder, setContextMenuFolder] = React.useState<{ id: string | number | null; name: string } | null>(null);
-  const [isCreateFolderDialogOpen, setIsCreateFolderDialogOpen] = React.useState(false);
+  const [contextMenuFolder, setContextMenuFolder] = React.useState<{
+    id: string | number | null;
+    name: string;
+  } | null>(null);
+  const [isCreateFolderDialogOpen, setIsCreateFolderDialogOpen] =
+    React.useState(false);
   const [newFolderName, setNewFolderName] = React.useState("");
   const [isCreatingFolder, setIsCreatingFolder] = React.useState(false);
-  const [infoFolder, setInfoFolder] = React.useState<{ id: string | number | null; name: string } | null>(null);
-  const [renameFolder, setRenameFolder] = React.useState<{ id: string | number | null; name: string } | null>(null);
+  const [infoFolder, setInfoFolder] = React.useState<{
+    id: string | number | null;
+    name: string;
+  } | null>(null);
+  const [renameFolder, setRenameFolder] = React.useState<{
+    id: string | number | null;
+    name: string;
+  } | null>(null);
   const [renameFolderName, setRenameFolderName] = React.useState("");
-  const [deleteFolder, setDeleteFolder] = React.useState<{ id: string | number | null; name: string } | null>(null);
+  const [deleteFolder, setDeleteFolder] = React.useState<{
+    id: string | number | null;
+    name: string;
+  } | null>(null);
   const [isRenamingFolder, setIsRenamingFolder] = React.useState(false);
   const [isDeletingFolder, setIsDeletingFolder] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const MEDIA_FILE_ACCEPT = "image/*,video/*";
+
+  const isMediaFile = React.useCallback((file: File) => {
+    return (
+      file.type.startsWith("image/") ||
+      file.type.startsWith("video/") ||
+      /\.(png|jpe?g|gif|webp|avif|heic|heif|bmp|svg|mp4|mov|webm|mkv|avi|m4v|3gp)$/i.test(
+        file.name,
+      )
+    );
+  }, []);
 
   const emitDriveRefresh = React.useCallback(() => {
     window.dispatchEvent(new CustomEvent("voyagrr:drive-refresh"));
   }, []);
 
-  const getFolderKey = React.useCallback((id: string | number | null) => (id === null ? "root" : String(id)), []);
+  const getFolderKey = React.useCallback(
+    (id: string | number | null) => (id === null ? "root" : String(id)),
+    [],
+  );
 
   const areChildrenEqual = React.useCallback(
     (
       left: { id: string | number | null; name: string }[],
       right: { id: string | number | null; name: string }[],
-    ) => left.length === right.length && left.every((item, index) => item.id === right[index]?.id && item.name === right[index]?.name),
+    ) =>
+      left.length === right.length &&
+      left.every(
+        (item, index) =>
+          item.id === right[index]?.id && item.name === right[index]?.name,
+      ),
     [],
   );
 
   const cacheChildrenForParent = React.useCallback(
-    (parentId: string | number | null, children: { id: string | number | null; name: string }[]) => {
+    (
+      parentId: string | number | null,
+      children: { id: string | number | null; name: string }[],
+    ) => {
       const parentKey = getFolderKey(parentId);
-      setChildrenByParent(prev => {
+      setChildrenByParent((prev) => {
         if (areChildrenEqual(prev[parentKey] || [], children)) {
           return prev;
         }
@@ -86,17 +162,63 @@ export const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
         return { ...prev, [parentKey]: children };
       });
 
-      setHasChildrenById(prev => {
+      setHasChildrenById((prev) => {
         const hasChildren = children.length > 0;
 
         if (prev[parentKey] === hasChildren) {
           return prev;
         }
 
+        probedChildrenIdsRef.current.add(parentKey);
         return { ...prev, [parentKey]: hasChildren };
       });
     },
     [areChildrenEqual, getFolderKey],
+  );
+
+  const removeFolderFromCache = React.useCallback(
+    (folderId: string | number) => {
+      const deletedFolderKey = getFolderKey(folderId);
+      const nextChildrenByParent: Record<
+        string,
+        { id: string | number | null; name: string }[]
+      > = {};
+
+      Object.entries(childrenByParent).forEach(([parentKey, children]) => {
+        if (parentKey === deletedFolderKey) {
+          return;
+        }
+
+        nextChildrenByParent[parentKey] = children.filter(
+          (child) => child.id !== folderId,
+        );
+      });
+
+      setChildrenByParent(nextChildrenByParent);
+      setHasChildrenById((prev) => {
+        const next = { ...prev };
+        delete next[deletedFolderKey];
+        probedChildrenIdsRef.current.delete(deletedFolderKey);
+        probingChildrenIdsRef.current.delete(deletedFolderKey);
+
+        Object.entries(nextChildrenByParent).forEach(
+          ([parentKey, children]) => {
+            probedChildrenIdsRef.current.add(parentKey);
+            next[parentKey] = children.length > 0;
+          },
+        );
+
+        return next;
+      });
+
+      setExpandedBreadcrumbIds((prev) => {
+        const next = new Set(prev);
+        next.delete(folderId);
+        next.delete(deletedFolderKey);
+        return next;
+      });
+    },
+    [childrenByParent, getFolderKey],
   );
 
   const probeFolderHasChildren = React.useCallback(
@@ -106,75 +228,101 @@ export const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
       }
 
       const folderKey = getFolderKey(id);
-      if (hasChildrenById[folderKey] !== undefined || loadingChildrenIds.has(folderKey)) {
+      if (
+        probedChildrenIdsRef.current.has(folderKey) ||
+        probingChildrenIdsRef.current.has(folderKey)
+      ) {
         return;
       }
 
-      setLoadingChildrenIds(prev => new Set(prev).add(folderKey));
+      probingChildrenIdsRef.current.add(folderKey);
+      setLoadingChildrenIds((prev) => new Set(prev).add(folderKey));
       try {
         const contents = await directoryService.fetchContents(id);
-        const children = (contents.children || []).map(child => ({ id: child.id, name: child.name }));
-        setHasChildrenById(prev => ({ ...prev, [folderKey]: children.length > 0 }));
-        setChildrenByParent(prev => (prev[folderKey] ? prev : { ...prev, [folderKey]: children }));
+        const children = (contents.children || []).map((child) => ({
+          id: child.id,
+          name: child.name,
+        }));
+        probedChildrenIdsRef.current.add(folderKey);
+        setHasChildrenById((prev) => ({
+          ...prev,
+          [folderKey]: children.length > 0,
+        }));
+        setChildrenByParent((prev) =>
+          prev[folderKey] ? prev : { ...prev, [folderKey]: children },
+        );
       } catch {
-        setHasChildrenById(prev => ({ ...prev, [folderKey]: false }));
+        probedChildrenIdsRef.current.add(folderKey);
+        setHasChildrenById((prev) => ({ ...prev, [folderKey]: false }));
       } finally {
-        setLoadingChildrenIds(prev => {
+        probingChildrenIdsRef.current.delete(folderKey);
+        setLoadingChildrenIds((prev) => {
           const next = new Set(prev);
           next.delete(folderKey);
           return next;
         });
       }
     },
-    [getFolderKey, hasChildrenById, loadingChildrenIds],
+    [getFolderKey],
   );
 
   const fetchChildrenForParent = React.useCallback(
-    async (parentId: string | number | null) => {
+    async (parentId: string | number | null, force = false) => {
       const parentKey = getFolderKey(parentId);
 
-      if (childrenByParent[parentKey]) {
+      if (!force && childrenByParent[parentKey]) {
+        childrenByParent[parentKey].forEach((child) => {
+          void probeFolderHasChildren(child.id);
+        });
         return;
       }
 
-      setLoadingChildrenIds(prev => new Set(prev).add(parentKey));
+      setLoadingChildrenIds((prev) => new Set(prev).add(parentKey));
       try {
         if (parentId === null) {
           const rootItems = await directoryService.fetchRoot();
           const children = rootItems
-            .filter(item => item.type === "directory")
-            .map(item => ({ id: item.id, name: item.name }));
+            .filter((item) => item.type === "directory")
+            .map((item) => ({ id: item.id, name: item.name }));
           cacheChildrenForParent(parentId, children);
-          children.forEach(child => {
+          children.forEach((child) => {
             void probeFolderHasChildren(child.id);
           });
           return;
         }
 
         const contents = await directoryService.fetchContents(parentId);
-        const children = (contents.children || []).map(child => ({ id: child.id, name: child.name }));
+        const children = (contents.children || []).map((child) => ({
+          id: child.id,
+          name: child.name,
+        }));
         cacheChildrenForParent(parentId, children);
-        children.forEach(child => {
+        children.forEach((child) => {
           void probeFolderHasChildren(child.id);
         });
       } catch {
         cacheChildrenForParent(parentId, []);
       } finally {
-        setLoadingChildrenIds(prev => {
+        setLoadingChildrenIds((prev) => {
           const next = new Set(prev);
           next.delete(parentKey);
           return next;
         });
       }
     },
-    [cacheChildrenForParent, childrenByParent, getFolderKey, probeFolderHasChildren],
+    [
+      cacheChildrenForParent,
+      childrenByParent,
+      getFolderKey,
+      probeFolderHasChildren,
+    ],
   );
 
   const toggleBreadcrumbExpansion = (id: string | number | null) => {
     const breadcrumbId = id ?? "root";
     const isOpening = !expandedBreadcrumbIds.has(breadcrumbId);
 
-    setExpandedBreadcrumbIds(prev => {
+    setExpandedBreadcrumbIds((prev) => {
       const next = new Set(prev);
       if (next.has(breadcrumbId)) {
         next.delete(breadcrumbId);
@@ -199,39 +347,29 @@ export const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
       return;
     }
 
-    cacheChildrenForParent(activeFolder.id, childDirectories);
-    childDirectories.forEach(child => {
-      void probeFolderHasChildren(child.id);
-    });
-  }, [breadcrumbs, cacheChildrenForParent, childDirectories, childDirectoriesFolderId, isDriveRoute, probeFolderHasChildren]);
+    let isActive = true;
+    queueMicrotask(() => {
+      if (!isActive) {
+        return;
+      }
 
-  React.useEffect(() => {
-    if (!isDriveRoute) {
-      return;
-    }
-
-    const visibleRoots = childrenByParent.root || childDirectories;
-
-    const walkVisibleFolders = (folders: { id: string | number | null; name: string }[]) => {
-      folders.forEach(folder => {
-        if (folder.id !== null) {
-          void probeFolderHasChildren(folder.id);
-        }
-
-        const folderKey = getFolderKey(folder.id);
-        if (!expandedBreadcrumbIds.has(folder.id ?? "root")) {
-          return;
-        }
-
-        const children = childrenByParent[folderKey] || [];
-        if (children.length > 0) {
-          walkVisibleFolders(children);
-        }
+      cacheChildrenForParent(activeFolder.id, childDirectories);
+      childDirectories.forEach((child) => {
+        void probeFolderHasChildren(child.id);
       });
-    };
+    });
 
-    walkVisibleFolders(visibleRoots);
-  }, [childDirectories, childrenByParent, expandedBreadcrumbIds, getFolderKey, isDriveRoute, probeFolderHasChildren]);
+    return () => {
+      isActive = false;
+    };
+  }, [
+    breadcrumbs,
+    cacheChildrenForParent,
+    childDirectories,
+    childDirectoriesFolderId,
+    isDriveRoute,
+    probeFolderHasChildren,
+  ]);
 
   const handleRootClick = () => {
     setBreadcrumbs([{ id: null, name: "My Drive" }]);
@@ -239,17 +377,26 @@ export const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
     onClose?.();
   };
 
-  const handleCreateFolder = (folder: { id: string | number | null; name: string }) => {
+  const handleCreateFolder = (folder: {
+    id: string | number | null;
+    name: string;
+  }) => {
     setContextMenuFolder(folder);
     setIsCreateFolderDialogOpen(true);
     setNewFolderName("");
   };
 
-  const handleFolderInfo = (folder: { id: string | number | null; name: string }) => {
+  const handleFolderInfo = (folder: {
+    id: string | number | null;
+    name: string;
+  }) => {
     setInfoFolder(folder);
   };
 
-  const handleFolderRename = (folder: { id: string | number | null; name: string }) => {
+  const handleFolderRename = (folder: {
+    id: string | number | null;
+    name: string;
+  }) => {
     setRenameFolder(folder);
     setRenameFolderName(folder.name);
   };
@@ -260,23 +407,36 @@ export const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
     const nextName = renameFolderName.trim();
     setIsRenamingFolder(true);
     try {
-      setChildrenByParent(prev => {
+      setChildrenByParent((prev) => {
         const next = { ...prev };
         Object.keys(next).forEach((key) => {
-          next[key] = next[key].map((item) => item.id === renameFolder.id ? { ...item, name: nextName } : item);
+          next[key] = next[key].map((item) =>
+            item.id === renameFolder.id ? { ...item, name: nextName } : item,
+          );
         });
         return next;
       });
-      setBreadcrumbs(prev => prev.map((crumb) => crumb.id === renameFolder.id ? { ...crumb, name: nextName } : crumb));
+      setBreadcrumbs((prev) =>
+        prev.map((crumb) =>
+          crumb.id === renameFolder.id ? { ...crumb, name: nextName } : crumb,
+        ),
+      );
+      window.dispatchEvent(
+        new CustomEvent("voyagrr:drive-rename", {
+          detail: { id: renameFolder.id, name: nextName },
+        }),
+      );
       setRenameFolder(null);
       setRenameFolderName("");
-      emitDriveRefresh();
     } finally {
       setIsRenamingFolder(false);
     }
   };
 
-  const handleFolderDelete = (folder: { id: string | number | null; name: string }) => {
+  const handleFolderDelete = (folder: {
+    id: string | number | null;
+    name: string;
+  }) => {
     setDeleteFolder(folder);
   };
 
@@ -286,19 +446,10 @@ export const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
     setIsDeletingFolder(true);
     try {
       await directoryService.deleteDirectory(deleteFolder.id);
-      setChildrenByParent(prev => {
-        const next = { ...prev };
-        Object.keys(next).forEach((key) => {
-          next[key] = next[key].filter((item) => item.id !== deleteFolder.id);
-        });
-        return next;
-      });
-      setBreadcrumbs(prev => prev.filter((crumb) => crumb.id !== deleteFolder.id));
-      setHasChildrenById(prev => {
-        const next = { ...prev };
-        delete next[getFolderKey(deleteFolder.id)];
-        return next;
-      });
+      removeFolderFromCache(deleteFolder.id);
+      setBreadcrumbs((prev) =>
+        prev.filter((crumb) => crumb.id !== deleteFolder.id),
+      );
       setDeleteFolder(null);
       emitDriveRefresh();
     } catch (error) {
@@ -308,9 +459,14 @@ export const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
     }
   };
 
-  const handleFolderShare = async (folder: { id: string | number | null; name: string }) => {
+  const handleFolderShare = async (folder: {
+    id: string | number | null;
+    name: string;
+  }) => {
     try {
-      await navigator.clipboard.writeText(`${window.location.origin}${window.location.pathname}#${folder.id}`);
+      await navigator.clipboard.writeText(
+        `${window.location.origin}${window.location.pathname}#${folder.id}`,
+      );
     } catch {
       console.error("Failed to copy share link");
     }
@@ -321,16 +477,25 @@ export const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
 
     setIsCreatingFolder(true);
     try {
-      const newFolderId = await directoryService.createDirectory(newFolderName, contextMenuFolder.id);
-      
+      const newFolderId = await directoryService.createDirectory(
+        newFolderName,
+        contextMenuFolder.id,
+      );
+
       // Update the cache with the new folder
       const folderKey = getFolderKey(contextMenuFolder.id);
       const existingChildren = childrenByParent[folderKey] || [];
-      const updatedChildren = [...existingChildren, { id: newFolderId, name: newFolderName }];
-      
-      setChildrenByParent(prev => ({ ...prev, [folderKey]: updatedChildren }));
-      setHasChildrenById(prev => ({ ...prev, [folderKey]: true }));
-      
+      const updatedChildren = [
+        ...existingChildren,
+        { id: newFolderId, name: newFolderName },
+      ];
+
+      setChildrenByParent((prev) => ({
+        ...prev,
+        [folderKey]: updatedChildren,
+      }));
+      setHasChildrenById((prev) => ({ ...prev, [folderKey]: true }));
+
       setIsCreateFolderDialogOpen(false);
       setNewFolderName("");
       setContextMenuFolder(null);
@@ -342,20 +507,31 @@ export const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
     }
   };
 
-  const handleUploadImage = (folder: { id: string | number | null; name: string }) => {
+  const handleUploadImage = (folder: {
+    id: string | number | null;
+    name: string;
+  }) => {
     setContextMenuFolder(folder);
     fileInputRef.current?.click();
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    const unsupportedFiles = files.filter((file) => !isMediaFile(file));
+    if (unsupportedFiles.length > 0) {
+      console.error("Only image and video files are supported for upload.");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      setContextMenuFolder(null);
+      return;
+    }
 
     try {
       const targetFolderId = contextMenuFolder?.id ?? activeFolderId;
       if (targetFolderId === null) return;
 
-      await storageService.uploadFile(file, targetFolderId);
+      await storageService.uploadFilesBatch(files, targetFolderId);
       emitDriveRefresh();
     } catch (error) {
       console.error("Failed to upload file", error);
@@ -391,7 +567,10 @@ export const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
 
     return (
       <React.Fragment key={`${folderKey}-${depth}-${nextAncestorPath.length}`}>
-        <div className="flex items-center gap-1" style={{ paddingLeft: `${depth * 14 + 10}px` }}>
+        <div
+          className="flex items-center gap-1"
+          style={{ paddingLeft: `${depth * 14 + 10}px` }}
+        >
           {hasChildren ? (
             <button
               type="button"
@@ -402,15 +581,25 @@ export const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
               }}
               className={cn(
                 "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors",
-                isExpanded ? "text-primary hover:bg-primary/10" : "text-zinc-700 hover:bg-white/5 hover:text-zinc-300",
+                isExpanded
+                  ? "text-primary hover:bg-primary/10"
+                  : "text-zinc-700 hover:bg-white/5 hover:text-zinc-300",
               )}
               aria-label={isExpanded ? "Collapse children" : "Expand children"}
             >
-              <ChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-200", isExpanded ? "rotate-0" : "rotate-[-90deg]")} />
+              <ChevronDown
+                className={cn(
+                  "h-3.5 w-3.5 transition-transform duration-200",
+                  isExpanded ? "rotate-0" : "rotate-[-90deg]",
+                )}
+              />
             </button>
           ) : (
             <div className="flex h-8 w-8 shrink-0 items-center justify-center">
-              <ChevronDown className="h-3.5 w-3.5 opacity-0" aria-hidden="true" />
+              <ChevronDown
+                className="h-3.5 w-3.5 opacity-0"
+                aria-hidden="true"
+              />
             </div>
           )}
 
@@ -426,11 +615,20 @@ export const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
                 }}
                 className={cn(
                   "group flex min-w-0 flex-1 items-center gap-1.5 rounded-xl px-2.5 py-2 text-left transition-colors",
-                  shouldHighlight ? "bg-primary/10 text-white" : "text-zinc-400 hover:bg-white/5 hover:text-white",
+                  shouldHighlight
+                    ? "bg-primary/10 text-white"
+                    : "text-zinc-400 hover:bg-white/5 hover:text-white",
                 )}
               >
-                <Folder className={cn("h-4 w-4 shrink-0", shouldHighlight ? "text-primary" : "text-zinc-500")} />
-                <span className="min-w-0 flex-1 truncate text-sm font-medium">{folder.name}</span>
+                <Folder
+                  className={cn(
+                    "h-4 w-4 shrink-0",
+                    shouldHighlight ? "text-primary" : "text-zinc-500",
+                  )}
+                />
+                <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                  {folder.name}
+                </span>
               </button>
             </ContextMenuTrigger>
             <ContextMenuContent className="w-52 bg-[#0a0810]/98 backdrop-blur-xl border-white/10 text-white rounded-lg p-1 shadow-2xl animate-in zoom-in-95 duration-200">
@@ -446,13 +644,15 @@ export const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
                 className="flex items-center gap-2 cursor-pointer"
               >
                 <Upload className="h-4 w-4" />
-                <span>Upload File</span>
+                <span>Upload Media</span>
               </ContextMenuItem>
               <ContextMenuItem
                 onClick={() => handleFolderInfo(folder)}
                 className="flex items-center gap-2 cursor-pointer"
               >
-                <span className="h-4 w-4 rounded-full border border-zinc-500 text-[9px] leading-4 text-center font-bold">i</span>
+                <span className="h-4 w-4 rounded-full border border-zinc-500 text-[9px] leading-4 text-center font-bold">
+                  i
+                </span>
                 <span>Info</span>
               </ContextMenuItem>
               <ContextMenuItem
@@ -466,7 +666,9 @@ export const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
                 onClick={() => handleFolderShare(folder)}
                 className="flex items-center gap-2 cursor-pointer"
               >
-                <span className="h-4 w-4 rounded-full border border-zinc-500 text-[9px] leading-4 text-center font-bold">↗</span>
+                <span className="h-4 w-4 rounded-full border border-zinc-500 text-[9px] leading-4 text-center font-bold">
+                  ↗
+                </span>
                 <span>Share</span>
               </ContextMenuItem>
               <ContextMenuItem
@@ -482,7 +684,14 @@ export const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
 
         {isExpanded && children.length > 0 && (
           <div className="space-y-1">
-            {children.map((child) => renderDirectoryRow(child, depth + 1, nextAncestorPath, nextAncestorFolderKeys))}
+            {children.map((child) =>
+              renderDirectoryRow(
+                child,
+                depth + 1,
+                nextAncestorPath,
+                nextAncestorFolderKeys,
+              ),
+            )}
           </div>
         )}
       </React.Fragment>
@@ -493,23 +702,36 @@ export const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
     <>
       {/* Mobile Overlay */}
       {isOpen && (
-        <div 
+        <div
           className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
           onClick={onClose}
         />
       )}
-      
-      <aside className={cn(
-        "fixed left-0 top-0 z-50 h-screen w-72 border-r border-white/5 bg-[#0a0810]/80 backdrop-blur-2xl transition-transform duration-300 lg:translate-x-0",
-        isOpen ? "translate-x-0" : "-translate-x-full"
-      )}>
+
+      <aside
+        className={cn(
+          "fixed left-0 top-0 z-50 h-screen w-72 border-r border-white/5 bg-[#0a0810]/80 backdrop-blur-2xl transition-transform duration-300 lg:translate-x-0",
+          isOpen ? "translate-x-0" : "-translate-x-full",
+        )}
+      >
         <div className="flex h-16 items-center justify-between px-6">
-          <button type="button" onClick={() => { onClose?.(); window.location.href = "/"; }}>
+          <button
+            type="button"
+            onClick={() => {
+              onClose?.();
+              navigate("/my-drive");
+            }}
+          >
             <h1 className="text-2xl font-bold tracking-tighter bg-gradient-to-r from-primary to-purple-400 bg-clip-text text-transparent">
               VOYAGRR
             </h1>
           </button>
-          <Button variant="ghost" size="icon" className="lg:hidden" onClick={onClose}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="lg:hidden"
+            onClick={onClose}
+          >
             <X className="h-5 w-5 text-muted-foreground" />
           </Button>
         </div>
@@ -517,17 +739,18 @@ export const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
         <div className="flex h-[calc(100%-4rem)] flex-col justify-between p-4">
           <div className="space-y-3">
             {navItems.map((item) => {
-              const isActive = location.pathname === item.href;
+              const isActive = pathname === item.href;
               const content = (
                 <Button
                   variant="ghost"
                   disabled={item.isDisabled}
                   className={cn(
                     "w-full justify-start gap-3 text-sm font-medium transition-all duration-300 relative group h-11 px-4 rounded-xl",
-                    isActive 
-                      ? "bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary" 
+                    isActive
+                      ? "bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary"
                       : "text-zinc-400 hover:text-white hover:bg-white/5",
-                    item.isDisabled && "opacity-40 cursor-not-allowed hover:bg-transparent hover:text-zinc-400"
+                    item.isDisabled &&
+                      "opacity-40 cursor-not-allowed hover:bg-transparent hover:text-zinc-400",
                   )}
                   onClick={
                     item.isDisabled
@@ -535,11 +758,11 @@ export const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
                       : () => {
                           if (item.label === "My Drive") {
                             handleRootClick();
-                            window.location.href = item.href;
+                            navigate(item.href);
                             return;
                           }
 
-                          window.location.href = item.href;
+                          navigate(item.href);
                           onClose?.();
                         }
                   }
@@ -547,10 +770,12 @@ export const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
                   {isActive && (
                     <span className="absolute left-0 h-6 w-1 rounded-r-full bg-primary shadow-[0_0_15px_rgba(170,59,255,0.8)]" />
                   )}
-                  <item.icon className={cn(
-                    "h-5 w-5 transition-colors",
-                    isActive ? "text-primary" : "group-hover:text-primary"
-                  )} />
+                  <item.icon
+                    className={cn(
+                      "h-5 w-5 transition-colors",
+                      isActive ? "text-primary" : "group-hover:text-primary",
+                    )}
+                  />
                   <span className="flex-1 text-left">{item.label}</span>
                   {item.isDisabled && (
                     <span className="text-[8px] font-black uppercase tracking-tighter bg-white/5 px-1.5 py-0.5 rounded-md border border-white/5 text-zinc-600">
@@ -561,7 +786,7 @@ export const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
               );
 
               if (item.label === "My Drive") {
-                const rootChildren = childrenByParent.root || childDirectories;
+                const rootChildren = childrenByParent.root || [];
 
                 return (
                   <div key={item.label} className="space-y-1">
@@ -569,7 +794,14 @@ export const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
 
                     {isDriveRoute && (
                       <div className="ml-6 space-y-1 border-l border-white/5 pl-3">
-                        {rootChildren.map((child) => renderDirectoryRow(child, 0, [{ id: null, name: "My Drive" }], new Set(["root"]))) }
+                        {rootChildren.map((child) =>
+                          renderDirectoryRow(
+                            child,
+                            0,
+                            [{ id: null, name: "My Drive" }],
+                            new Set(["root"]),
+                          ),
+                        )}
                       </div>
                     )}
                   </div>
@@ -580,27 +812,35 @@ export const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
                 return <div key={item.label}>{content}</div>;
               }
 
-              return <React.Fragment key={item.label}>{content}</React.Fragment>;
+              return (
+                <React.Fragment key={item.label}>{content}</React.Fragment>
+              );
             })}
-
           </div>
 
           <div className="space-y-4">
             <div className="rounded-2xl border border-white/5 bg-white/5 p-4 backdrop-blur-sm">
               <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Storage</p>
+                <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+                  Storage
+                </p>
                 <p className="text-[10px] text-zinc-500">65% used</p>
               </div>
               <div className="mt-3 h-1.5 w-full rounded-full bg-zinc-800">
-                <div 
-                  className="h-1.5 rounded-full bg-gradient-to-r from-primary to-purple-500 shadow-[0_0_10px_rgba(170,59,255,0.4)]" 
-                  style={{ width: '65%' }}
+                <div
+                  className="h-1.5 rounded-full bg-gradient-to-r from-primary to-purple-500 shadow-[0_0_10px_rgba(170,59,255,0.4)]"
+                  style={{ width: "65%" }}
                 />
               </div>
-              <p className="mt-3 text-[11px] text-zinc-500">6.5 GB of 10 GB used</p>
+              <p className="mt-3 text-[11px] text-zinc-500">
+                6.5 GB of 10 GB used
+              </p>
             </div>
-            
-            <Button onClick={() => fileInputRef.current?.click()} className="w-full gap-2 bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20 transition-all hover:scale-[1.02] h-11">
+
+            <Button
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full gap-2 bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20 transition-all hover:scale-[1.02] h-11"
+            >
               <PlusCircle className="h-4 w-4" />
               Upload Media
             </Button>
@@ -609,12 +849,15 @@ export const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
       </aside>
 
       {/* Create Folder Dialog */}
-      <Dialog open={isCreateFolderDialogOpen} onOpenChange={(open) => {
-        setIsCreateFolderDialogOpen(open);
-        if (!open) {
-          setContextMenuFolder(null);
-        }
-      }}>
+      <Dialog
+        open={isCreateFolderDialogOpen}
+        onOpenChange={(open) => {
+          setIsCreateFolderDialogOpen(open);
+          if (!open) {
+            setContextMenuFolder(null);
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Create Folder</DialogTitle>
@@ -653,7 +896,10 @@ export const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!renameFolder} onOpenChange={(open) => !open && setRenameFolder(null)}>
+      <Dialog
+        open={!!renameFolder}
+        onOpenChange={(open) => !open && setRenameFolder(null)}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Rename Folder</DialogTitle>
@@ -675,10 +921,17 @@ export const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRenameFolder(null)} disabled={isRenamingFolder}>
+            <Button
+              variant="outline"
+              onClick={() => setRenameFolder(null)}
+              disabled={isRenamingFolder}
+            >
               Cancel
             </Button>
-            <Button onClick={() => void submitFolderRename()} disabled={isRenamingFolder || !renameFolderName.trim()}>
+            <Button
+              onClick={() => void submitFolderRename()}
+              disabled={isRenamingFolder || !renameFolderName.trim()}
+            >
               {isRenamingFolder ? "Saving..." : "Save"}
             </Button>
           </DialogFooter>
@@ -692,17 +945,24 @@ export const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
         metadata={null}
       />
 
-      <AlertDialog open={!!deleteFolder} onOpenChange={(open) => !open && setDeleteFolder(null)}>
+      <AlertDialog
+        open={!!deleteFolder}
+        onOpenChange={(open) => !open && setDeleteFolder(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Folder</AlertDialogTitle>
             <AlertDialogDescription>
-              Delete <strong>{deleteFolder?.name}</strong>? This cannot be undone.
+              Delete <strong>{deleteFolder?.name}</strong>? This cannot be
+              undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void confirmFolderDelete()} disabled={isDeletingFolder}>
+            <AlertDialogAction
+              onClick={() => void confirmFolderDelete()}
+              disabled={isDeletingFolder}
+            >
               {isDeletingFolder ? "Deleting..." : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -713,8 +973,9 @@ export const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*"
+        accept={MEDIA_FILE_ACCEPT}
         className="hidden"
+        multiple
         onChange={handleFileSelect}
       />
     </>
