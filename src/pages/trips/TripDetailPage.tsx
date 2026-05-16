@@ -53,40 +53,8 @@ type EmotionRecord = {
   emotion: string;
 };
 
-type TagRecord = {
-  tag: string;
-};
-
-type FaceRecord = {
-  userId?: string | null;
-  user?: {
-    firstName: string;
-    username: string;
-    avatarUrl?: string;
-  } | null;
-};
-
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
-
-type EmotionRecord = {
-  emotion: string;
-};
-
-type TagRecord = {
-  tag: string;
-};
-
-type FaceRecord = {
-  userId?: string | null;
-  user?: {
-    firstName: string;
-    username: string;
-    avatarUrl?: string;
-  } | null;
-};
-
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
 
 // --- Helpers ---
 const extractLocation = (meta: FileMetadata | undefined): Location | null => {
@@ -132,16 +100,13 @@ const extractEmotions = (meta: FileMetadata | undefined): string[] => {
 
 const extractTags = (meta: FileMetadata | undefined): string[] => {
   if (!meta?.analysis?.tags) return [];
-  return meta.analysis.tags.map((tag: TagRecord) => tag.tag).filter(Boolean);
-  return meta.analysis.tags.map((tag: TagRecord) => tag.tag).filter(Boolean);
+  return meta.analysis.tags.map((tag) => tag.tag).filter(Boolean);
 };
 
 const extractPeople = (meta: FileMetadata | undefined): Person[] => {
   if (!meta?.recognition?.faces) return [];
   const people: Person[] = [];
-  meta.recognition.faces.forEach((face: FaceRecord) => {
-    if (face.user && face.user.firstName) {
-  meta.recognition.faces.forEach((face: FaceRecord) => {
+  meta.recognition.faces.forEach((face) => {
     if (face.user && face.user.firstName) {
       people.push({
         userId: face.userId || face.user.username,
@@ -297,15 +262,12 @@ export const TripDetailPage = () => {
       }
     } catch (error) {
       console.error("Failed to fetch trip details:", error);
-    } catch (error) {
-      console.error("Failed to fetch trip details:", error);
     } finally {
       setLoading(false);
     }
   }, [tripId]);
 
   useEffect(() => {
-    void Promise.resolve().then(fetchData);
     void Promise.resolve().then(fetchData);
   }, [fetchData]);
 
@@ -318,7 +280,6 @@ export const TripDetailPage = () => {
         setAnalyzing(false);
         fetchData();
       }, 2000);
-    } catch {
     } catch {
       setAnalyzing(false);
     }
