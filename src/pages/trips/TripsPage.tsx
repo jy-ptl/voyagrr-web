@@ -11,6 +11,8 @@ import {
   Users,
   Sparkles,
   Loader2,
+  Compass,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,7 +52,6 @@ import { directoryService } from "@/services/directoryService";
 import { groupService, type Group } from "@/services/groupService";
 import { userService, type UserSearchResponse } from "@/services/userService";
 import type { Trip, TripCreateRequest } from "@/types/trips";
-import { X } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 
@@ -64,6 +65,14 @@ const tripSchema = z.object({
 });
 
 type TripValues = z.infer<typeof tripSchema>;
+type StatusFilter = "ALL" | Trip["status"];
+
+const statusFilters: { value: StatusFilter; label: string }[] = [
+  { value: "ALL", label: "All" },
+  { value: "PLANNED", label: "Planned" },
+  { value: "ONGOING", label: "Ongoing" },
+  { value: "COMPLETED", label: "Completed" },
+];
 
 const tripCoverCache = new Map<number, string | number | null>();
 const tripCoverRequests = new Map<number, Promise<string | number | null>>();
@@ -172,6 +181,7 @@ const TripsPage = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
 
   // User Search State
   const [userSearch, setUserSearch] = useState("");
@@ -316,130 +326,233 @@ const TripsPage = () => {
     }
   };
 
-  const filteredTrips = useMemo(
+  const statusCounts = useMemo(
     () =>
-      trips.filter((trip) =>
-        trip.title.toLowerCase().includes(searchQuery.toLowerCase()),
+      trips.reduce<Record<StatusFilter, number>>(
+        (counts, trip) => {
+          counts.ALL += 1;
+          counts[trip.status] += 1;
+          return counts;
+        },
+        { ALL: 0, PLANNED: 0, ONGOING: 0, COMPLETED: 0 },
       ),
-    [trips, searchQuery],
+    [trips],
   );
 
+  const filteredTrips = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+
+    return trips.filter((trip) => {
+      const matchesStatus =
+        statusFilter === "ALL" || trip.status === statusFilter;
+      const matchesSearch =
+        !normalizedQuery ||
+        trip.title.toLowerCase().includes(normalizedQuery) ||
+        Boolean(trip.description?.toLowerCase().includes(normalizedQuery));
+
+      return matchesStatus && matchesSearch;
+    });
+  }, [trips, searchQuery, statusFilter]);
+
   return (
-    <div className="max-w-7xl mx-auto space-y-6 animate-in fade-in duration-700">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight text-white mb-0.5">
+    <div className="mx-auto w-full min-w-0 max-w-7xl space-y-5 overflow-x-hidden animate-in fade-in duration-700">
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div className="min-w-0">
+          <div className="mb-2 inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-zinc-400">
+            <Compass className="h-3.5 w-3.5 text-primary" />
+            {trips.length} {trips.length === 1 ? "journey" : "journeys"}
+          </div>
+          <h2 className="truncate text-2xl font-bold tracking-tight text-white sm:text-3xl">
             My Trips
           </h2>
-          <p className="text-xs text-zinc-500">
+          <p className="mt-1 max-w-lg text-sm text-zinc-500">
             Plan and manage your world adventures.
           </p>
         </div>
         <Button
           onClick={() => setIsModalOpen(true)}
-          className="bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20 h-10 px-5 gap-2 rounded-xl text-sm"
+          className="h-11 w-full gap-2 rounded-xl bg-primary px-5 text-sm font-bold text-white shadow-lg shadow-primary/20 hover:bg-primary/90 sm:w-auto"
         >
           <Plus className="h-4 w-4" />
           Create Trip
         </Button>
       </div>
 
-      <div className="relative group max-w-xl">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500 group-focus-within:text-primary transition-colors" />
-        <Input
-          placeholder="Search your journeys..."
-          className="bg-white/5 border-white/10 pl-10 h-11 text-sm focus-visible:ring-primary/50 transition-all rounded-xl"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
+      <div className="min-w-0 space-y-3">
+        <div className="group relative flex h-12 min-w-0 w-full items-center rounded-2xl border border-white/10 bg-white/[0.04] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition-all focus-within:border-primary/50 focus-within:bg-white/[0.06] focus-within:shadow-[0_0_0_4px_rgba(170,59,255,0.08)]">
+          <Search className="absolute left-4 h-4 w-4 shrink-0 text-zinc-500 transition-colors group-focus-within:text-primary" />
+          <Input
+            placeholder="Search trips..."
+            className="h-full min-w-0 flex-1 border-0 bg-transparent pl-11 pr-14 text-sm text-white placeholder:text-zinc-500 focus-visible:ring-0 focus-visible:ring-offset-0 sm:pr-32"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          <div className="absolute right-2 flex shrink-0 items-center gap-2">
+            {searchQuery && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 rounded-xl text-zinc-500 hover:bg-white/10 hover:text-white"
+                onClick={() => setSearchQuery("")}
+                aria-label="Clear search"
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            <span className="hidden rounded-xl border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-zinc-500 sm:inline-flex">
+              {filteredTrips.length}{" "}
+              {filteredTrips.length === 1 ? "trip" : "trips"}
+            </span>
+          </div>
+        </div>
+
+        <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 sm:hidden">
+          {filteredTrips.length} {filteredTrips.length === 1 ? "trip" : "trips"}{" "}
+          shown
+        </p>
+
+        <div
+          className="w-full min-w-0 max-w-full snap-x snap-mandatory overflow-x-auto overscroll-x-contain pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          role="tablist"
+          aria-label="Filter trips by status"
+        >
+          <div className="flex w-max flex-nowrap items-center gap-2">
+            {statusFilters.map((filter) => {
+              const isActive = statusFilter === filter.value;
+              return (
+                <Button
+                  key={filter.value}
+                  type="button"
+                  variant="ghost"
+                  role="tab"
+                  aria-selected={isActive}
+                  onClick={() => setStatusFilter(filter.value)}
+                  className={cn(
+                    "h-9 shrink-0 snap-start rounded-xl border px-3 text-[10px] font-black uppercase tracking-wider transition-all touch-manipulation",
+                    isActive
+                      ? "border-primary/40 bg-primary text-white shadow-lg shadow-primary/20 hover:bg-primary/90"
+                      : "border-white/10 bg-white/[0.04] text-zinc-500 hover:bg-white/10 hover:text-white",
+                  )}
+                >
+                  {filter.label}
+                  <span
+                    className={cn(
+                      "ml-2 rounded-lg px-1.5 py-0.5 text-[9px]",
+                      isActive ? "bg-white/20 text-white" : "bg-white/5",
+                    )}
+                  >
+                    {statusCounts[filter.value]}
+                  </span>
+                </Button>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       {loading ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-56 w-full rounded-2xl bg-white/5" />
+        <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <Skeleton key={i} className="h-72 w-full rounded-2xl bg-white/5" />
           ))}
         </div>
       ) : filteredTrips.length === 0 ? (
-        <Card className="flex flex-col items-center justify-center py-20 text-center bg-white/5 border-dashed border-white/10 rounded-2xl group transition-all hover:bg-white/[0.07]">
-          <div className="rounded-2xl bg-primary/10 p-6 mb-4 group-hover:scale-105 transition-transform duration-500">
+        <Card className="flex min-h-[360px] flex-col items-center justify-center rounded-2xl border-dashed border-white/10 bg-white/5 px-5 py-14 text-center transition-all hover:bg-white/[0.07]">
+          <div className="mb-4 rounded-2xl bg-primary/10 p-6 transition-transform duration-500">
             <MapIcon className="h-10 w-10 text-primary" />
           </div>
           <h3 className="text-xl font-bold text-white mb-1">
-            No trips planned
+            {trips.length === 0 ? "No trips planned" : "No matching trips"}
           </h3>
           <p className="text-xs text-zinc-500 max-w-xs mx-auto mb-6">
-            The world is waiting. Start by creating your first trip and invite
-            your friends.
+            {trips.length === 0
+              ? "The world is waiting. Start by creating your first trip and invite your friends."
+              : "Try a different search or status filter to find the journey you need."}
           </p>
           <Button
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => {
+              if (trips.length === 0) {
+                setIsModalOpen(true);
+                return;
+              }
+              setSearchQuery("");
+              setStatusFilter("ALL");
+            }}
             variant="outline"
-            className="border-white/10 bg-white/5 hover:bg-white/10 h-10 px-6 rounded-xl text-xs"
+            className="h-11 rounded-xl border-white/10 bg-white/5 px-6 text-xs hover:bg-white/10"
           >
-            Plan First Journey
+            {trips.length === 0 ? "Plan First Journey" : "Clear Filters"}
           </Button>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {filteredTrips.map((trip) => (
             <Card
               key={trip.id}
               onClick={() => navigate(`/trips/${trip.id}`)}
-              className="group relative overflow-hidden bg-white/5 border-white/10 hover:border-primary/50 transition-all duration-300 rounded-2xl cursor-pointer"
+              className="group relative w-full min-w-0 max-w-full cursor-pointer touch-manipulation overflow-hidden rounded-2xl border-white/10 bg-white/5 transition-all duration-300 hover:border-primary/50 hover:bg-white/[0.07]"
             >
-              <div className="aspect-video w-full bg-zinc-900 overflow-hidden relative">
+              <div className="relative min-w-0 aspect-[16/10] w-full overflow-hidden bg-zinc-900 sm:aspect-video">
                 <TripCoverThumbnail
                   directoryId={trip.directoryId}
                   title={trip.title}
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#0a0810] to-transparent z-10" />
-                <div className="absolute top-3 right-3 z-20 px-2 py-0.5 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-[9px] font-black text-primary uppercase tracking-widest">
+                <div className="absolute top-3 right-3 z-20 max-w-[calc(100%-1.5rem)] truncate rounded-full border border-white/10 bg-black/40 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-primary backdrop-blur-md">
                   {trip.status}
                 </div>
               </div>
-              <div className="p-4 relative">
-                <h4 className="text-lg font-bold text-white mb-1 group-hover:text-primary transition-colors">
+              <div className="relative p-4">
+                <h4 className="line-clamp-1 text-lg font-bold text-white transition-colors group-hover:text-primary">
                   {trip.title}
                 </h4>
-                <p className="text-xs text-zinc-400 line-clamp-2 mb-3 h-8">
+                <p className="mt-1 line-clamp-2 min-h-9 text-sm leading-5 text-zinc-400">
                   {trip.description || "No description provided."}
                 </p>
-                <div className="flex items-center justify-between mt-4">
-                  <div className="flex items-center gap-3 text-[10px] text-zinc-500 font-bold uppercase tracking-wider">
-                    <span className="flex items-center gap-1.5">
-                      <Globe className="h-3 w-3" />
+                <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-h-9 min-w-0 items-center gap-3 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                    <span className="flex min-w-0 items-center gap-1.5 truncate">
+                      <Globe className="h-3 w-3 shrink-0" />
                       {trip.visibility}
                     </span>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center justify-end gap-2 sm:justify-start">
                     <Button
                       variant="ghost"
                       size="sm"
                       className={cn(
-                        "h-8 px-2 rounded-lg hover:bg-primary/20 hover:text-primary transition-all gap-1.5 text-[9px] font-black uppercase tracking-widest",
-                        analyzingTrips[trip.id] && "text-primary bg-primary/10",
+                        "h-10 w-10 shrink-0 rounded-xl touch-manipulation transition-all hover:bg-primary/20 hover:text-primary sm:h-8 sm:w-auto sm:px-2",
+                        analyzingTrips[trip.id] && "bg-primary/10 text-primary",
                       )}
                       onClick={(e) => handleAnalyzeTrip(e, trip.id)}
                       disabled={analyzingTrips[trip.id]}
+                      aria-label={
+                        analyzingTrips[trip.id]
+                          ? "Analyzing trip"
+                          : "Analyze trip"
+                      }
                     >
                       {analyzingTrips[trip.id] ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
+                        <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
-                        <Sparkles className="h-3 w-3" />
+                        <Sparkles className="h-4 w-4" />
                       )}
-                      {analyzingTrips[trip.id] ? "Analyzing" : "Analyze"}
+                      <span className="hidden sm:ml-1.5 sm:inline sm:text-[9px] sm:font-black sm:uppercase sm:tracking-wider">
+                        {analyzingTrips[trip.id] ? "Analyzing" : "Analyze"}
+                      </span>
                     </Button>
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-8 w-8 rounded-lg hover:bg-white/10"
+                      className="h-10 w-10 shrink-0 rounded-xl touch-manipulation hover:bg-white/10 sm:h-8 sm:w-8"
                       onClick={(e) => {
                         e.stopPropagation();
                         navigate(`/trips/${trip.id}`);
                       }}
+                      aria-label="Open trip"
                     >
-                      <ArrowRight className="h-3.5 w-3.5" />
+                      <ArrowRight className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>
@@ -449,7 +562,6 @@ const TripsPage = () => {
         </div>
       )}
 
-      {/* Modal remains same but uses form.handleSubmit(onTripCreate) */}
       <Dialog
         open={isModalOpen}
         onOpenChange={(open) => {
@@ -461,7 +573,7 @@ const TripsPage = () => {
           }
         }}
       >
-        <DialogContent className="sm:max-w-[500px] bg-[#0a0810]/95 backdrop-blur-3xl border-white/10 text-white rounded-[2rem] p-0 overflow-hidden shadow-2xl">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100%-1.5rem)] max-w-[540px] overflow-hidden rounded-2xl border-white/10 bg-[#0a0810]/95 p-0 text-white shadow-2xl backdrop-blur-3xl sm:rounded-[2rem]">
           <DialogHeader className="p-6 bg-white/5 border-b border-white/5">
             <DialogTitle className="text-xl font-black">
               New Journey
@@ -470,12 +582,13 @@ const TripsPage = () => {
               Set the foundation for your next great adventure.
             </DialogDescription>
           </DialogHeader>
-          <div className="p-6 space-y-6">
-            <Form {...form}>
-              <form
-                onSubmit={form.handleSubmit(onTripCreate)}
-                className="space-y-6"
-              >
+          <div className="max-h-[calc(100dvh-10rem)] overflow-y-auto overscroll-y-contain [-ms-overflow-style:none] [scrollbar-width:none] sm:max-h-[calc(100svh-10rem)] sm:[scrollbar-width:auto]">
+            <div className="p-5 sm:p-6">
+              <Form {...form}>
+                <form
+                  onSubmit={form.handleSubmit(onTripCreate)}
+                  className="space-y-6"
+                >
                 <FormField
                   control={form.control}
                   name="title"
@@ -495,7 +608,7 @@ const TripsPage = () => {
                     </FormItem>
                   )}
                 />
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <FormField
                     control={form.control}
                     name="visibility"
@@ -685,25 +798,26 @@ const TripsPage = () => {
                     </FormItem>
                   )}
                 />
-                <DialogFooter className="pt-4 border-t border-white/5">
+                <DialogFooter className="gap-3 border-t border-white/5 pt-4">
                   <Button
                     variant="ghost"
                     type="button"
                     onClick={() => setIsModalOpen(false)}
-                    className="text-zinc-500 h-10 px-4 rounded-xl text-xs"
+                    className="h-11 w-full rounded-xl px-4 text-xs text-zinc-500 sm:h-10 sm:w-auto"
                   >
                     Cancel
                   </Button>
                   <Button
                     type="submit"
                     disabled={createLoading}
-                    className="bg-primary text-white shadow-xl shadow-primary/20 h-10 px-8 rounded-xl font-bold text-xs transition-all hover:scale-[1.02]"
+                    className="h-11 w-full rounded-xl bg-primary px-8 text-xs font-bold text-white shadow-xl shadow-primary/20 transition-all hover:scale-[1.02] sm:h-10 sm:w-auto"
                   >
                     {createLoading ? "Creating..." : "Launch Trip"}
                   </Button>
                 </DialogFooter>
-              </form>
-            </Form>
+                </form>
+              </Form>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

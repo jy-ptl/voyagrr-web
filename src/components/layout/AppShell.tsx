@@ -18,9 +18,9 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
           isOpen={isSidebarOpen}
           onClose={() => setIsSidebarOpen(false)}
         />
-        <div className="flex flex-1 flex-col lg:pl-72">
+        <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden lg:pl-72">
           <Navbar onMenuClick={() => setIsSidebarOpen(true)} />
-          <main className="flex-1 p-4 lg:p-6">
+          <main className="min-w-0 flex-1 overflow-x-hidden p-4">
             <AnimatePresence mode="wait">
               <motion.div
                 key={window.location.pathname}
@@ -28,6 +28,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
                 transition={{ duration: 0.2, ease: "easeOut" }}
+                className="min-w-0 max-w-full overflow-x-hidden"
               >
                 {children}
               </motion.div>

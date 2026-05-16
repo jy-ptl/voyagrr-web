@@ -23,6 +23,8 @@ import {
   Upload,
   Plus,
   Info,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -126,6 +128,38 @@ const hasPositiveEmotion = (meta: FileMetadata | undefined): boolean => {
   );
 };
 
+/** In-memory cache so reel slides reuse blobs; only one ahead is prefetched at a time. */
+const reelImageUrlCache = new Map<string | number, string>();
+const reelImageUrlRequests = new Map<string | number, Promise<string>>();
+
+const fetchReelImageUrl = (fileId: string | number): Promise<string> => {
+  const cached = reelImageUrlCache.get(fileId);
+  if (cached) return Promise.resolve(cached);
+
+  let request = reelImageUrlRequests.get(fileId);
+  if (!request) {
+    request = storageService
+      .downloadFile(fileId)
+      .then((blob) => {
+        const url = URL.createObjectURL(blob);
+        reelImageUrlCache.set(fileId, url);
+        return url;
+      })
+      .finally(() => {
+        reelImageUrlRequests.delete(fileId);
+      });
+    reelImageUrlRequests.set(fileId, request);
+  }
+
+  return request;
+};
+
+const prefetchReelImage = (fileId: string | number) => {
+  void fetchReelImageUrl(fileId).catch((err) =>
+    console.warn(`Failed to prefetch reel image ${fileId}`, err),
+  );
+};
+
 const FullQualityImage = ({
   fileId,
   className,
@@ -133,25 +167,21 @@ const FullQualityImage = ({
   fileId: string | number;
   className?: string;
 }) => {
-  const [url, setUrl] = useState<string | null>(null);
+  const [url, setUrl] = useState<string | null>(
+    () => reelImageUrlCache.get(fileId) ?? null,
+  );
 
   useEffect(() => {
-    let objectUrl: string | null = null;
     let isMounted = true;
 
-    storageService
-      .downloadFile(fileId)
-      .then((blob) => {
-        if (isMounted) {
-          objectUrl = URL.createObjectURL(blob);
-          setUrl(objectUrl);
-        }
+    fetchReelImageUrl(fileId)
+      .then((resolved) => {
+        if (isMounted) setUrl(resolved);
       })
       .catch((err) => console.error("Failed to fetch full image", err));
 
     return () => {
       isMounted = false;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [fileId]);
 
@@ -194,6 +224,185 @@ const ReelAutoAdvance = ({
 
   return null;
 };
+
+type HorizontalScrollRailProps = {
+  children: React.ReactNode;
+  className?: string;
+  ariaLabel: string;
+  showSwipeHint?: boolean;
+};
+
+const scrollRailChipClass = (active?: boolean) =>
+  cn(
+    "inline-flex h-9 shrink-0 snap-start items-center justify-center rounded-full border px-3.5 text-xs font-bold whitespace-nowrap transition-colors touch-manipulation",
+    active
+      ? "border-white/20 bg-white/15 text-white shadow-sm"
+      : "border-white/10 bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-white",
+  );
+
+const scrollRailTrackClass =
+  "flex min-h-11 min-w-0 items-center gap-2 overflow-x-auto overscroll-x-contain rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
+
+const HorizontalScrollRail = ({
+  children,
+  className,
+  ariaLabel,
+  showSwipeHint = true,
+}: HorizontalScrollRailProps) => {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef({ active: false, startX: 0, scrollLeft: 0, moved: false });
+  const [edges, setEdges] = useState({ left: false, right: false });
+  const [overflows, setOverflows] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const refreshEdges = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) {
+      setEdges({ left: false, right: false });
+      setOverflows(false);
+      return;
+    }
+    const { scrollLeft, clientWidth, scrollWidth } = el;
+    const hasOverflow = scrollWidth > clientWidth + 8;
+    setOverflows(hasOverflow);
+    setEdges({
+      left: hasOverflow && scrollLeft > 8,
+      right: hasOverflow && scrollLeft + clientWidth < scrollWidth - 8,
+    });
+  }, []);
+
+  useEffect(() => {
+    refreshEdges();
+    const el = scrollRef.current;
+    if (!el) return;
+
+    el.addEventListener("scroll", refreshEdges, { passive: true });
+    const observer = new ResizeObserver(refreshEdges);
+    observer.observe(el);
+
+    return () => {
+      el.removeEventListener("scroll", refreshEdges);
+      observer.disconnect();
+    };
+  }, [refreshEdges, children]);
+
+  const scrollByAmount = (delta: number) => {
+    scrollRef.current?.scrollBy({ left: delta, behavior: "smooth" });
+  };
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    const el = scrollRef.current;
+    if (!el) return;
+
+    dragRef.current = {
+      active: true,
+      startX: event.clientX,
+      scrollLeft: el.scrollLeft,
+      moved: false,
+    };
+    setIsDragging(true);
+    el.setPointerCapture(event.pointerId);
+  };
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current.active) return;
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const delta = event.clientX - dragRef.current.startX;
+    if (Math.abs(delta) > 4) dragRef.current.moved = true;
+    el.scrollLeft = dragRef.current.scrollLeft - delta;
+  };
+
+  const endDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current.active) return;
+    const el = scrollRef.current;
+    dragRef.current.active = false;
+    setIsDragging(false);
+    if (el?.hasPointerCapture(event.pointerId)) {
+      el.releasePointerCapture(event.pointerId);
+    }
+    refreshEdges();
+  };
+
+  const handleClickCapture = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (dragRef.current.moved) {
+      event.preventDefault();
+      event.stopPropagation();
+      dragRef.current.moved = false;
+    }
+  };
+
+  return (
+    <div className={cn("relative min-w-0 w-full", className)}>
+      <div
+        className={cn("relative", overflows ? "w-full" : "inline-flex max-w-full")}
+      >
+        {edges.left && (
+          <>
+            <div
+              className="pointer-events-none absolute left-0 top-0 z-[2] h-full w-12 rounded-l-full bg-gradient-to-r from-[#0a0810] via-[#0a0810]/80 to-transparent"
+              aria-hidden
+            />
+            <button
+              type="button"
+              onClick={() => scrollByAmount(-200)}
+              className="absolute left-1.5 top-1/2 z-[3] flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-[#0a0810]/95 text-white shadow-md backdrop-blur-sm transition-colors hover:bg-white/10 touch-manipulation"
+              aria-label="Scroll left"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+          </>
+        )}
+        {edges.right && (
+          <>
+            <div
+              className="pointer-events-none absolute right-0 top-0 z-[2] h-full w-12 rounded-r-full bg-gradient-to-l from-[#0a0810] via-[#0a0810]/80 to-transparent"
+              aria-hidden
+            />
+            <button
+              type="button"
+              onClick={() => scrollByAmount(200)}
+              className="absolute right-1.5 top-1/2 z-[3] flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-[#0a0810]/95 text-white shadow-md backdrop-blur-sm transition-colors hover:bg-white/10 touch-manipulation"
+              aria-label="Scroll right"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </>
+        )}
+
+        <div
+          ref={scrollRef}
+          className={cn(
+            scrollRailTrackClass,
+            "snap-x snap-proximity",
+            overflows ? "w-full cursor-grab" : "w-max cursor-default",
+            isDragging && "cursor-grabbing select-none",
+          )}
+          role="region"
+          aria-label={ariaLabel}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+          onPointerLeave={(event) => {
+            if (dragRef.current.active) endDrag(event);
+          }}
+          onClickCapture={handleClickCapture}
+        >
+          {children}
+        </div>
+      </div>
+      {showSwipeHint && edges.right && (
+        <p className="mt-1.5 text-center text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+          Drag, swipe, or use arrows for more
+        </p>
+      )}
+    </div>
+  );
+};
+
 
 export const TripDetailPage = () => {
   const { tripId } = useParams<{ tripId: string }>();
@@ -466,6 +675,21 @@ export const TripDetailPage = () => {
     });
   }, [items, metadataMap]);
 
+  // Prefetch only the next reel slide while viewing the current one
+  useEffect(() => {
+    if (!isReelOpen || reelItems.length === 0) return;
+
+    const current = reelItems[reelIndex];
+    if (current) {
+      void fetchReelImageUrl(current.id).catch(() => {});
+    }
+
+    if (reelItems.length > 1) {
+      const nextItem = reelItems[(reelIndex + 1) % reelItems.length];
+      if (nextItem) prefetchReelImage(nextItem.id);
+    }
+  }, [isReelOpen, reelIndex, reelItems]);
+
   const scrollToItem = (id: string | number) => {
     const el = refs.current[id];
     if (el) {
@@ -500,30 +724,30 @@ export const TripDetailPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0810] text-white font-sans pb-32 animate-in fade-in duration-700">
+    <div className="relative -mx-4 mb-0 min-h-[calc(100dvh-4rem)] min-w-0 w-[calc(100%+2rem)] max-w-none overflow-x-hidden bg-[#0a0810] pb-28 font-sans text-white animate-in fade-in duration-700 lg:-mx-6 lg:w-[calc(100%+3rem)]">
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-[#0a0810]/80 backdrop-blur-xl border-b border-white/10 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-4">
+      <header className="sticky top-0 z-40 overflow-visible border-b border-white/10 bg-[#0a0810]/95 shadow-sm backdrop-blur-xl">
+        <div className="mx-auto flex min-h-[3.75rem] min-w-0 max-w-7xl items-center justify-between gap-2 px-4 py-2 sm:min-h-16 sm:px-6 sm:py-2.5 lg:px-8">
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-4">
             <Button
               variant="ghost"
               size="icon"
               onClick={() => navigate("/trips")}
-              className="h-10 w-10 rounded-xl hover:bg-white/10 text-zinc-400 hover:text-white"
+              className="h-10 w-10 shrink-0 rounded-xl text-zinc-400 hover:bg-white/10 hover:text-white touch-manipulation"
             >
               <ArrowLeft className="h-5 w-5" />
             </Button>
-            <h1 className="text-lg font-bold text-white tracking-tight">
+            <h1 className="truncate text-base font-bold tracking-tight text-white sm:text-lg">
               {trip?.title}
             </h1>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
             <Button
               onClick={handleAnalyze}
               disabled={analyzing}
               variant="outline"
-              className="border-white/10 bg-white/5 hover:bg-white/10 h-10 px-3 sm:px-4 rounded-xl text-xs text-white"
+              className="h-10 shrink-0 rounded-xl border-white/10 bg-white/5 px-3 text-xs text-white hover:bg-white/10 sm:px-4"
             >
               {analyzing ? (
                 <Loader2 className="h-4 w-4 sm:mr-2 animate-spin" />
@@ -537,8 +761,12 @@ export const TripDetailPage = () => {
 
             {reelItems.length > 0 && (
               <Button
-                onClick={() => setIsReelOpen(true)}
-                className="bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20 h-10 px-3 sm:px-5 rounded-xl text-xs font-bold transition-all hover:scale-105 active:scale-95"
+                onClick={() => {
+                  setReelIndex(0);
+                  setIsReelOpen(true);
+                }}
+                className="h-10 shrink-0 rounded-xl bg-primary px-3 text-xs font-bold text-white shadow-lg shadow-primary/20 transition-colors hover:bg-primary/90 active:bg-primary/80 touch-manipulation sm:px-5"
+                aria-label="Play highlight reel"
               >
                 <Play className="h-4 w-4 sm:mr-2 fill-white" />
                 <span className="hidden sm:inline">Play Reel</span>
@@ -609,9 +837,9 @@ export const TripDetailPage = () => {
               })}
             </div>
           ) : (
-            <div className="text-zinc-500 flex flex-col items-center">
-              <MapPin className="h-8 w-8 mb-2 opacity-50" />
-              <p className="text-sm font-medium">
+            <div className="flex max-w-xs flex-col items-center px-6 text-center text-zinc-500">
+              <MapPin className="mb-2 h-8 w-8 opacity-50" />
+              <p className="text-sm font-medium leading-relaxed">
                 No location data available for this trip yet
               </p>
             </div>
@@ -619,33 +847,33 @@ export const TripDetailPage = () => {
         </div>
 
         {/* Map Overlay info */}
-        <div className="absolute bottom-4 left-4 right-4 sm:left-auto sm:right-8 bg-[#0a0810]/90 backdrop-blur-md px-4 py-3 sm:px-6 sm:py-4 rounded-2xl shadow-xl border border-white/10 sm:max-w-xs pointer-events-none">
-          <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-1">
+        <div className="pointer-events-none absolute bottom-4 left-4 right-4 min-w-0 max-w-[calc(100%-2rem)] rounded-2xl border border-white/10 bg-[#0a0810]/90 px-4 py-3 shadow-xl backdrop-blur-md sm:left-auto sm:right-8 sm:max-w-xs sm:px-6 sm:py-4">
+          <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-primary">
             Trip Overview
           </p>
-          <h2 className="text-xl font-bold text-white leading-tight mb-2">
+          <h2 className="mb-2 truncate text-xl font-bold leading-tight text-white">
             {trip?.title}
           </h2>
-          <p className="text-xs text-zinc-400 font-medium">
+          <p className="text-xs font-medium text-zinc-400">
             {mapPoints.length} locations mapped • {items.length} memories
             captured
           </p>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 space-y-12">
-        {/* Smart Filters Bar */}
-        <div className="bg-[#0a0810] rounded-3xl p-4 sm:p-6 shadow-sm border border-white/10 sticky top-20 z-30 flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6 justify-between">
-          <div className="flex flex-nowrap sm:flex-wrap items-center gap-3 sm:gap-4 overflow-x-auto pb-2 sm:pb-0 scrollbar-none w-full sm:w-auto">
-            {/* Emotion Filter */}
+      <div className="mx-auto mt-6 min-w-0 max-w-7xl space-y-10 px-4 sm:mt-8 sm:space-y-12 sm:px-6 lg:px-8">
+        {/* Smart Filters */}
+        <section className="sticky top-[3.75rem] z-30 min-w-0 rounded-3xl border border-white/10 bg-[#0a0810] p-4 shadow-sm sm:top-16 sm:p-6">
+          <div className="flex min-w-0 flex-col gap-4">
+            <HorizontalScrollRail ariaLabel="People and mood filters">
             <Button
               onClick={() => setShowHappyMoments(!showHappyMoments)}
               variant={showHappyMoments ? "default" : "outline"}
               className={cn(
-                "rounded-xl transition-all font-bold text-xs h-10 shadow-sm shrink-0",
+                scrollRailChipClass(false),
                 showHappyMoments
-                  ? "bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 border-amber-500/30"
-                  : "bg-white/5 border-white/10 text-zinc-400 hover:bg-white/10 hover:text-white",
+                  ? "border-amber-500/30 bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 hover:text-amber-300"
+                  : "",
               )}
             >
               <Smile
@@ -659,13 +887,13 @@ export const TripDetailPage = () => {
 
             {/* People Filter */}
             {allPeople.length > 0 && (
-              <div className="flex items-center bg-white/5 p-1 rounded-xl border border-white/10 shrink-0">
+              <div className="flex h-9 shrink-0 snap-start items-center gap-0.5 rounded-full border border-white/10 bg-white/5 px-1">
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => setSelectedPerson(null)}
                   className={cn(
-                    "rounded-lg px-3 h-8 text-[10px] font-black uppercase tracking-widest transition-all",
+                    "h-7 rounded-full px-3 text-[10px] font-black uppercase tracking-widest transition-colors",
                     !selectedPerson
                       ? "bg-white/10 shadow-sm text-white"
                       : "text-zinc-500 hover:text-white",
@@ -678,9 +906,9 @@ export const TripDetailPage = () => {
                     key={p.userId}
                     onClick={() => setSelectedPerson(p.userId)}
                     className={cn(
-                      "h-8 w-8 rounded-lg overflow-hidden border-2 transition-all mx-0.5",
+                      "h-7 w-7 shrink-0 overflow-hidden rounded-full border-2 transition-all touch-manipulation",
                       selectedPerson === p.userId
-                        ? "border-primary scale-110 shadow-md"
+                        ? "border-primary shadow-md ring-2 ring-primary/30"
                         : "border-transparent opacity-70 hover:opacity-100",
                     )}
                     title={p.firstName}
@@ -700,41 +928,36 @@ export const TripDetailPage = () => {
                 ))}
               </div>
             )}
-          </div>
+            </HorizontalScrollRail>
 
-          <div className="flex items-center gap-3 sm:gap-4 w-full sm:w-auto overflow-x-auto pb-2 sm:pb-0 scrollbar-none justify-between sm:justify-end">
-            {/* Scene Tabs */}
             {allScenes.length > 1 && (
-              <div className="flex bg-white/5 p-1 rounded-xl border border-white/10 shrink-0">
-                {allScenes.slice(0, 4).map((scene) => (
+              <HorizontalScrollRail ariaLabel="Filter by scene">
+                {allScenes.map((scene) => (
                   <button
                     key={scene}
+                    type="button"
+                    role="tab"
+                    aria-selected={selectedScene === scene}
                     onClick={() => setSelectedScene(scene)}
-                    className={cn(
-                      "px-4 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap",
-                      selectedScene === scene
-                        ? "bg-white/10 text-white shadow-sm"
-                        : "text-zinc-500 hover:text-white",
-                    )}
+                    className={scrollRailChipClass(selectedScene === scene)}
                   >
                     {scene}
                   </button>
                 ))}
-              </div>
+              </HorizontalScrollRail>
             )}
 
-            {/* Search */}
-            <div className="relative group shrink-0 sm:shrink">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 group-focus-within:text-primary transition-colors" />
+            <div className="relative min-w-0 w-full pr-14 sm:pr-0">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500 transition-colors" />
               <Input
-                placeholder="Search..."
+                placeholder="Search memories..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 w-full sm:w-48 bg-white/5 border-white/10 rounded-xl focus-visible:ring-primary/50 text-sm font-medium h-10"
+                className="h-11 w-full min-w-0 rounded-full border-white/10 bg-white/[0.04] pl-9 text-sm font-medium focus-visible:ring-primary/50"
               />
             </div>
           </div>
-        </div>
+        </section>
 
         {/* Chronological Masonry Timeline */}
         <div className="space-y-16">
@@ -760,7 +983,7 @@ export const TripDetailPage = () => {
                 </div>
 
                 {/* Masonry Grid */}
-                <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-6 space-y-6">
+                <div className="min-w-0 columns-1 gap-6 space-y-6 sm:columns-2 lg:columns-3 xl:columns-4">
                   {group.items.map((item) => {
                     const meta = metadataMap[item.id];
                     const tags = extractTags(meta);
@@ -848,74 +1071,119 @@ export const TripDetailPage = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-[#0a0810]/98 backdrop-blur-2xl flex items-center justify-center p-4 sm:p-8"
+            className="fixed inset-0 z-[60] flex min-w-0 flex-col overflow-hidden bg-black"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Trip highlight reel"
           >
-            <Button
-              variant="ghost"
-              size="icon"
-              className="absolute top-6 right-6 text-white/70 hover:text-white hover:bg-white/10 rounded-full h-12 w-12"
-              onClick={() => setIsReelOpen(false)}
-            >
-              <X className="h-6 w-6" />
-            </Button>
+            <div className="flex shrink-0 flex-col gap-2 px-3 pb-2 pt-[max(0.75rem,env(safe-area-inset-top))]">
+              {reelItems.length <= 12 ? (
+                <div className="flex min-w-0 gap-1">
+                  {reelItems.map((_, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setReelIndex(idx)}
+                      className="h-0.5 min-w-0 flex-1 overflow-hidden rounded-full bg-white/25"
+                      aria-label={`Go to memory ${idx + 1}`}
+                    >
+                      <div
+                        className={cn(
+                          "h-full rounded-full bg-white transition-all duration-300",
+                          idx <= reelIndex ? "w-full" : "w-0",
+                        )}
+                      />
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="h-0.5 w-full overflow-hidden rounded-full bg-white/25">
+                  <div
+                    className="h-full rounded-full bg-white transition-all duration-300"
+                    style={{
+                      width: `${((reelIndex + 1) / reelItems.length) * 100}%`,
+                    }}
+                  />
+                </div>
+              )}
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-white/60">
+                  {reelIndex + 1} / {reelItems.length}
+                </p>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-10 w-10 rounded-full text-white/80 hover:bg-white/10 hover:text-white touch-manipulation"
+                  onClick={() => setIsReelOpen(false)}
+                  aria-label="Close reel"
+                >
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
+            </div>
 
-            <div className="w-full max-w-5xl aspect-video relative flex flex-col items-center justify-center">
+            <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+              <button
+                type="button"
+                className="absolute left-0 top-0 z-10 h-full w-[28%] touch-manipulation"
+                onClick={() =>
+                  setReelIndex(
+                    (prev) =>
+                      (prev - 1 + reelItems.length) % reelItems.length,
+                  )
+                }
+                aria-label="Previous memory"
+              />
+              <button
+                type="button"
+                className="absolute right-0 top-0 z-10 h-full w-[28%] touch-manipulation"
+                onClick={() =>
+                  setReelIndex((prev) => (prev + 1) % reelItems.length)
+                }
+                aria-label="Next memory"
+              />
+
               <AnimatePresence mode="wait">
                 <motion.div
                   key={reelIndex}
-                  initial={{ opacity: 0, scale: 0.95, filter: "blur(10px)" }}
-                  animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-                  exit={{ opacity: 0, scale: 1.05, filter: "blur(10px)" }}
-                  transition={{ duration: 0.7, ease: "easeInOut" }}
-                  className="absolute inset-0 rounded-3xl overflow-hidden shadow-2xl bg-black"
+                  initial={{ opacity: 0, scale: 0.98 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 1.02 }}
+                  transition={{ duration: 0.35, ease: "easeOut" }}
+                  className="absolute inset-0 flex items-center justify-center bg-black p-2 sm:p-6"
                 >
                   <FullQualityImage
                     fileId={reelItems[reelIndex].id}
-                    className="w-full h-full !rounded-none object-contain"
+                    className="max-h-full max-w-full object-contain"
                   />
-
-                  {/* Cinematic Overlay */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/30 pointer-events-none" />
-
-                  <div className="absolute bottom-10 left-10 right-10">
-                    <motion.div
-                      initial={{ y: 20, opacity: 0 }}
-                      animate={{ y: 0, opacity: 1 }}
-                      transition={{ delay: 0.4 }}
-                      className="flex items-center gap-4 text-white"
-                    >
-                      {extractDate(metadataMap[reelItems[reelIndex].id]) && (
-                        <Badge className="bg-white/20 hover:bg-white/30 text-white backdrop-blur-md border-none px-4 py-1.5 text-sm font-semibold tracking-wide">
-                          {format(
-                            extractDate(metadataMap[reelItems[reelIndex].id])!,
-                            "MMM do",
-                          )}
-                        </Badge>
-                      )}
-                      <p className="text-2xl font-bold tracking-tight">
-                        {extractPeople(metadataMap[reelItems[reelIndex].id])
-                          .map((p) => p.firstName)
-                          .join(", ")}
-                      </p>
-                    </motion.div>
-                  </div>
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-black/40" />
                 </motion.div>
               </AnimatePresence>
 
-              {/* Progress Bar */}
-              <div className="absolute -bottom-8 left-0 right-0 flex gap-2">
-                {reelItems.map((_, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setReelIndex(idx)}
-                    className={cn(
-                      "h-1.5 rounded-full transition-all duration-300",
-                      idx === reelIndex
-                        ? "bg-white flex-1"
-                        : "bg-white/30 w-8 hover:bg-white/50",
-                    )}
-                  />
-                ))}
+              <div className="pointer-events-none absolute bottom-0 left-0 right-0 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-8">
+                <motion.div
+                  key={`reel-meta-${reelIndex}`}
+                  initial={{ y: 12, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-4"
+                >
+                  {extractDate(metadataMap[reelItems[reelIndex].id]) && (
+                    <Badge className="w-fit shrink-0 border-none bg-white/20 px-3 py-1 text-xs font-semibold text-white backdrop-blur-md">
+                      {format(
+                        extractDate(metadataMap[reelItems[reelIndex].id])!,
+                        "MMM do",
+                      )}
+                    </Badge>
+                  )}
+                  {extractPeople(metadataMap[reelItems[reelIndex].id]).length >
+                    0 && (
+                    <p className="truncate text-base font-bold tracking-tight text-white sm:text-xl">
+                      {extractPeople(metadataMap[reelItems[reelIndex].id])
+                        .map((p) => p.firstName)
+                        .join(", ")}
+                    </p>
+                  )}
+                </motion.div>
               </div>
             </div>
 
@@ -931,7 +1199,7 @@ export const TripDetailPage = () => {
       </AnimatePresence>
 
       {/* FAB & Upload Progress */}
-      <div className="fixed bottom-8 right-8 flex flex-col items-end gap-4 z-50">
+      <div className="fixed bottom-5 right-4 z-50 flex flex-col items-end gap-4 sm:bottom-8 sm:right-8">
         <AnimatePresence>
           {isFabOpen && (
             <motion.div
