@@ -79,7 +79,7 @@ const TripCoverThumbnail = ({
     directoryId ? (tripCoverCache.get(directoryId) ?? null) : null,
   );
   const [loading, setLoading] = useState(
-    Boolean(directoryId) && !tripCoverCache.has(directoryId),
+    directoryId !== undefined && !tripCoverCache.has(directoryId),
   );
 
   useEffect(() => {
